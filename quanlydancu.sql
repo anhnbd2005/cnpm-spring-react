@@ -20,8 +20,6 @@ CREATE TABLE ho_khau (
     so_ho_khau VARCHAR(50) UNIQUE,
     ten_chu_ho VARCHAR(255),
     dia_chi VARCHAR(255),
-    phuong_xa VARCHAR(255),
-    quan_huyen VARCHAR(255),
     ngay_tao DATE,
     noi_dung_thay_doi_chu_ho VARCHAR(500),
     ngay_thay_doi_chu_ho DATE,
@@ -115,5 +113,6 @@ CREATE TABLE thu_phi_ho_khau (
     CONSTRAINT fk_thuphi_dotthuphi FOREIGN KEY (dot_thu_phi_id) REFERENCES dot_thu_phi(id),
     CONSTRAINT fk_thuphi_collected_by FOREIGN KEY (collected_by) REFERENCES tai_khoan(id)
 );
-ALTER USER postgres WITH PASSWORD '123456';
+
+
 

@@ -33,6 +33,7 @@ public class JwtFilter extends GenericFilter {
                 String username = claims.getSubject();
                 String role = claims.get("role", String.class);
 
+
                 GrantedAuthority authority = new SimpleGrantedAuthority(role);
                 Authentication auth =
                         new UsernamePasswordAuthenticationToken(username, null, List.of(authority));

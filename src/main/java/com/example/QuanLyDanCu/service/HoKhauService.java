@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -34,7 +35,7 @@ public class HoKhauService {
     // Thêm hộ khẩu mới
     public HoKhau create(HoKhau hk, Authentication auth) {
         String role = auth.getAuthorities().iterator().next().getAuthority();
-        if (!role.equals("ADMIN") && !role.equals("TO_TRUONG")) {
+        if (!role.equals("ADMIN") && !role.equals("TOTRUONG")) {
             throw new AccessDeniedException("Bạn không có quyền thêm hộ khẩu!");
         }
 
@@ -52,7 +53,7 @@ public class HoKhauService {
     // Cập nhật hộ khẩu
     public HoKhau update(Long id, HoKhau hk, Authentication auth) {
         String role = auth.getAuthorities().iterator().next().getAuthority();
-        if (!role.equals("ADMIN") && !role.equals("TO_TRUONG")) {
+        if (!role.equals("ADMIN") && !role.equals("TOTRUONG")) {
             throw new AccessDeniedException("Bạn không có quyền sửa hộ khẩu!");
         }
 
@@ -61,13 +62,35 @@ public class HoKhauService {
 
         TaiKhoan user = taiKhoanRepo.findByTenDangNhap(auth.getName())
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy user"));
+        boolean changed = false;
 
-        existing.setTenChuHo(hk.getTenChuHo());
-        existing.setDiaChi(hk.getDiaChi());
-        existing.setPhuongXa(hk.getPhuongXa());
-        existing.setQuanHuyen(hk.getQuanHuyen());
-        existing.setNoiDungThayDoiChuHo(hk.getNoiDungThayDoiChuHo());
-        existing.setNgayThayDoiChuHo(hk.getNgayThayDoiChuHo());
+        // --- Cập nhật tên chủ hộ ---
+        if (hk.getTenChuHo() != null && !Objects.equals(existing.getTenChuHo(), hk.getTenChuHo())) {
+            if (hk.getNoiDungThayDoiChuHo() == null || hk.getNoiDungThayDoiChuHo().trim().isEmpty()) {
+                throw new RuntimeException("Bạn phải nhập nội dung thay đổi chủ hộ!");
+            }
+            existing.setTenChuHo(hk.getTenChuHo());
+            existing.setNoiDungThayDoiChuHo(hk.getNoiDungThayDoiChuHo());
+            existing.setNgayThayDoiChuHo(LocalDate.now());
+            changed = true;
+        }
+
+        // --- Cập nhật địa chỉ ---
+        if (hk.getDiaChi() != null && !Objects.equals(existing.getDiaChi(), hk.getDiaChi())) {
+            existing.setDiaChi(hk.getDiaChi());
+            changed = true;
+        }
+
+        // --- Cập nhật số hộ khẩu ---
+        if (hk.getSoHoKhau() != null && !Objects.equals(existing.getSoHoKhau(), hk.getSoHoKhau())) {
+            existing.setSoHoKhau(hk.getSoHoKhau());
+            changed = true;
+        }
+        // Nếu không có gì thay đổi
+        if (!changed) {
+            throw new RuntimeException("Không có gì để thay đổi!");
+        }
+
 
         existing.setUpdatedAt(LocalDateTime.now()); // timestamp update
         existing.setUpdatedBy(user.getId());        // ID người sửa
@@ -78,7 +101,7 @@ public class HoKhauService {
     // Xóa hộ khẩu
     public void delete(Long id, Authentication auth) {
         String role = auth.getAuthorities().iterator().next().getAuthority();
-        if (!role.equals("ADMIN") && !role.equals("TO_TRUONG")) {
+        if (!role.equals("ADMIN") && !role.equals("TOTRUONG")) {
             throw new AccessDeniedException("Bạn không có quyền xóa hộ khẩu!");
         }
 

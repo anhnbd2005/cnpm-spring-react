@@ -18,8 +18,6 @@ public class HoKhau {
 
     private String tenChuHo;
     private String diaChi;
-    private String phuongXa;
-    private String quanHuyen;
     private LocalDate ngayTao;
     private String noiDungThayDoiChuHo;
     private LocalDate ngayThayDoiChuHo;
