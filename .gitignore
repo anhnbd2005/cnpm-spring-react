@@ -20,13 +20,16 @@ Thumbs.db
 
 # Maven
 .mvn/wrapper/maven-wrapper.jar
+maven-status/
+*.class
+*.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
 
 # Spring Boot
 HELP.md
 
-# STS
+# STS (Spring Tool Suite)
 .apt_generated
 .classpath
 .factorypath
