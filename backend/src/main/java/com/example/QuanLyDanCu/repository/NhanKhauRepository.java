@@ -44,11 +44,7 @@ public interface NhanKhauRepository extends JpaRepository<NhanKhau, Long> {
         FROM NhanKhau n
         WHERE n.ngaySinh IS NOT NULL
         GROUP BY
-          CASE
-            WHEN n.ngaySinh > :cutoffChild  THEN 'CHILD'
-            WHEN n.ngaySinh > :cutoffRetire THEN 'WORKING'
-            ELSE 'RETIRED'
-          END,
+          bucket,
           n.gioiTinh
         """)
     List<AgeBucketGenderCount> countByAgeBuckets(
