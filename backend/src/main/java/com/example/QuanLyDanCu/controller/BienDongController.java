@@ -2,6 +2,7 @@ package com.example.QuanLyDanCu.controller;
 
 import com.example.QuanLyDanCu.entity.BienDong;
 import com.example.QuanLyDanCu.service.BienDongService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -9,14 +10,15 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/biendong")
+@RequestMapping("/api/bien-dong")
 @RequiredArgsConstructor
+@Tag(name = "Biến Động", description = "API quản lý biến động nhân khẩu")
 public class BienDongController {
 
     private final BienDongService bienDongService;
 
     // Lấy tất cả biến động
-    @GetMapping("/all")
+    @GetMapping
     public List<BienDong> getAll() {
         return bienDongService.getAll();  // Gọi phương thức getAll() từ service
     }
@@ -28,13 +30,13 @@ public class BienDongController {
     }
 
     // Cập nhật biến động
-    @PutMapping("/update/{id}")
+    @PutMapping("/{id}")
     public BienDong update(@PathVariable Long id, @RequestBody BienDong bienDong, Authentication auth) {
         return bienDongService.update(id, bienDong, auth);  // Gọi phương thức update() từ service
     }
 
     // Xóa biến động
-    @DeleteMapping("/delete/{id}")
+    @DeleteMapping("/{id}")
     public void delete(@PathVariable Long id, Authentication auth) {
         bienDongService.delete(id, auth);  // Gọi phương thức delete() từ service
     }

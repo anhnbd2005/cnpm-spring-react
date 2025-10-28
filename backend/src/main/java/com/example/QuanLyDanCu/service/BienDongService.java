@@ -28,7 +28,7 @@ public class BienDongService {
     public BienDong create(BienDong bienDong, Authentication auth) {
         // Kiểm tra quyền người dùng
         String role = auth.getAuthorities().iterator().next().getAuthority();
-        if (!role.equals("ADMIN") && !role.equals("TOTRUONG")) {
+        if (!role.equals("ROLE_ADMIN") && !role.equals("ROLE_TOTRUONG")) {
             throw new RuntimeException("Bạn không có quyền tạo biến động!");
         }
 
@@ -46,7 +46,7 @@ public class BienDongService {
     public BienDong update(Long id, BienDong bienDong, Authentication auth) {
         // Kiểm tra quyền người dùng
         String role = auth.getAuthorities().iterator().next().getAuthority();
-        if (!role.equals("ADMIN") && !role.equals("TOTRUONG")) {
+        if (!role.equals("ROLE_ADMIN") && !role.equals("ROLE_TOTRUONG")) {
             throw new RuntimeException("Bạn không có quyền sửa biến động!");
         }
 
@@ -74,8 +74,10 @@ public class BienDongService {
         }
 
         // Gán thông tin cập nhật
+        TaiKhoan user = taiKhoanRepository.findByTenDangNhap(auth.getName())
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy user"));
         existingBienDong.setCreatedAt(LocalDateTime.now());  // Thời gian cập nhật
-        existingBienDong.setCreatedBy(Long.valueOf(auth.getName()));  // Lấy ID người sửa từ tên đăng nhập
+        existingBienDong.setCreatedBy(user.getId());  // Lấy ID người sửa
 
         return bienDongRepository.save(existingBienDong); // Lưu lại biến động đã cập nhật
     }
@@ -84,7 +86,7 @@ public class BienDongService {
     public void delete(Long id, Authentication auth) {
         // Kiểm tra quyền người dùng
         String role = auth.getAuthorities().iterator().next().getAuthority();
-        if (!role.equals("ADMIN") && !role.equals("TOTRUONG")) {
+        if (!role.equals("ROLE_ADMIN") && !role.equals("ROLE_TOTRUONG")) {
             throw new RuntimeException("Bạn không có quyền xóa biến động!");
         }
 

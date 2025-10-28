@@ -38,7 +38,7 @@ public class NhanKhauService {
     // Thêm nhân khẩu mới
     public NhanKhau create(NhanKhau nk, Authentication auth) {
         String role = auth.getAuthorities().iterator().next().getAuthority();
-        if (!role.equals("ADMIN") && !role.equals("TOTRUONG")) {
+        if (!role.equals("ROLE_ADMIN") && !role.equals("ROLE_TOTRUONG")) {
             throw new AccessDeniedException("Bạn không có quyền thêm nhân khẩu!");
         }
 
@@ -57,7 +57,7 @@ public class NhanKhauService {
     // Cập nhật nhân khẩu
     public NhanKhau update(Long id, NhanKhau nk, Authentication auth) {
         String role = auth.getAuthorities().iterator().next().getAuthority();
-        if (!role.equals("ADMIN") && !role.equals("TOTRUONG")) {
+        if (!role.equals("ROLE_ADMIN") && !role.equals("ROLE_TOTRUONG")) {
             throw new AccessDeniedException("Bạn không có quyền sửa nhân khẩu!");
         }
 
@@ -98,7 +98,7 @@ public class NhanKhauService {
     // Xóa nhân khẩu
     public void delete(Long id, Authentication auth) {
         String role = auth.getAuthorities().iterator().next().getAuthority();
-        if (!role.equals("ADMIN") && !role.equals("TOTRUONG")) {
+        if (!role.equals("ROLE_ADMIN") && !role.equals("ROLE_TOTRUONG")) {
             throw new AccessDeniedException("Bạn không có quyền xóa nhân khẩu!");
         }
 
@@ -249,7 +249,7 @@ public class NhanKhauService {
     // --- helper ---
     private void checkRole(Authentication auth) {
         String role = auth.getAuthorities().iterator().next().getAuthority();
-        if (!role.equals("ADMIN") && !role.equals("TOTRUONG")) {
+        if (!role.equals("ROLE_ADMIN") && !role.equals("ROLE_TOTRUONG")) {
             throw new AccessDeniedException("Bạn không có quyền thực hiện thao tác này!");
         }
     }

@@ -2,6 +2,7 @@ package com.example.QuanLyDanCu.controller;
 
 import com.example.QuanLyDanCu.entity.NhanKhau;
 import com.example.QuanLyDanCu.service.NhanKhauService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -15,14 +16,15 @@ import java.util.Map;
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
 
 @RestController
-@RequestMapping("/api/nhankhau")
+@RequestMapping("/api/nhan-khau")
 @RequiredArgsConstructor
+@Tag(name = "Nhân Khẩu", description = "API quản lý nhân khẩu")
 public class NhanKhauController {
 
     private final NhanKhauService nhanKhauService;
 
     // GET tất cả
-    @GetMapping("/all")
+    @GetMapping
     public List<NhanKhau> getAll() {
         return nhanKhauService.getAll();
     }

@@ -35,7 +35,7 @@ public class HoKhauService {
     // Thêm hộ khẩu mới
     public HoKhau create(HoKhau hk, Authentication auth) {
         String role = auth.getAuthorities().iterator().next().getAuthority();
-        if (!role.equals("ADMIN") && !role.equals("TOTRUONG")) {
+        if (!role.equals("ROLE_ADMIN") && !role.equals("ROLE_TOTRUONG")) {
             throw new AccessDeniedException("Bạn không có quyền thêm hộ khẩu!");
         }
 
@@ -53,7 +53,7 @@ public class HoKhauService {
     // Cập nhật hộ khẩu
     public HoKhau update(Long id, HoKhau hk, Authentication auth) {
         String role = auth.getAuthorities().iterator().next().getAuthority();
-        if (!role.equals("ADMIN") && !role.equals("TOTRUONG")) {
+        if (!role.equals("ROLE_ADMIN") && !role.equals("ROLE_TOTRUONG")) {
             throw new AccessDeniedException("Bạn không có quyền sửa hộ khẩu!");
         }
 
@@ -101,7 +101,7 @@ public class HoKhauService {
     // Xóa hộ khẩu
     public void delete(Long id, Authentication auth) {
         String role = auth.getAuthorities().iterator().next().getAuthority();
-        if (!role.equals("ADMIN") && !role.equals("TOTRUONG")) {
+        if (!role.equals("ROLE_ADMIN") && !role.equals("ROLE_TOTRUONG")) {
             throw new AccessDeniedException("Bạn không có quyền xóa hộ khẩu!");
         }
 
