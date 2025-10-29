@@ -1,6 +1,6 @@
 # API Integration Test Report
 
-**Generated:** 2025-10-29 12:07:26  
+**Generated:** 2025-10-29 12:33:31  
 **Test Suite Version:** 4.0.0  
 **Total Tests:** 26  
 **Passed:** 26 ✅  
@@ -18,7 +18,7 @@
 | ✅ PASS | HoKhau  |  GET /api/ho-khau | 200 |
 | ✅ PASS | HoKhau  |  GET /api/ho-khau/1 | 200 |
 | ✅ PASS | HoKhau  |  POST /api/ho-khau | 201 |
-| ✅ PASS | HoKhau  |  PUT /api/ho-khau/13 | 200 |
+| ✅ PASS | HoKhau  |  PUT /api/ho-khau/14 | 200 |
 | ✅ PASS | NhanKhau  |  GET /api/nhan-khau?page=0&size=10 | 200 |
 | ✅ PASS | NhanKhau  |  GET /api/nhan-khau/search?q=Nguyen | 200 |
 | ✅ PASS | NhanKhau  |  GET /api/nhan-khau/stats/gender | 200 |
@@ -26,17 +26,17 @@
 | ✅ PASS | NhanKhau  |  POST /api/nhan-khau | 201 |
 | ✅ PASS | BienDong  |  GET /api/bien-dong | 200 |
 | ✅ PASS | BienDong  |  POST /api/bien-dong | 201 |
-| ✅ PASS | BienDong  |  GET /api/bien-dong/10 | 200 |
+| ✅ PASS | BienDong  |  GET /api/bien-dong/11 | 200 |
 | ✅ PASS | DotThuPhi  |  GET /api/dot-thu-phi | 200 |
 | ✅ PASS | DotThuPhi  |  POST /api/dot-thu-phi | 201 |
-| ✅ PASS | DotThuPhi  |  GET /api/dot-thu-phi/11 | 200 |
-| ✅ PASS | DotThuPhi  |  PUT /api/dot-thu-phi/11 | 200 |
+| ✅ PASS | DotThuPhi  |  GET /api/dot-thu-phi/12 | 200 |
+| ✅ PASS | DotThuPhi  |  PUT /api/dot-thu-phi/12 | 200 |
 | ✅ PASS | ThuPhiHoKhau  |  GET /api/thu-phi-ho-khau | 200 |
 | ✅ PASS | ThuPhiHoKhau  |  GET /api/thu-phi-ho-khau/stats | 200 |
 | ✅ PASS | ThuPhiHoKhau  |  GET /api/thu-phi-ho-khau/calc?hoKhauId=1&dotThuPhiId=2 | 200 |
 | ✅ PASS | ThuPhiHoKhau  |  GET /api/thu-phi-ho-khau/calc?hoKhauId=4&dotThuPhiId=2 | 200 |
 | ✅ PASS | ThuPhiHoKhau  |  POST /api/thu-phi-ho-khau | 201 |
-| ✅ PASS | ThuPhiHoKhau  |  GET /api/thu-phi-ho-khau/3 | 200 |
+| ✅ PASS | ThuPhiHoKhau  |  GET /api/thu-phi-ho-khau/4 | 200 |
 | ✅ PASS | Swagger  |  GET /swagger-ui/index.html | 200 |
 | ✅ PASS | OpenAPI  |  GET /v3/api-docs | 200 |
 
