@@ -1,7 +1,5 @@
 package com.example.QuanLyDanCu.controller;
 
-import com.example.QuanLyDanCu.dto.PaymentRequestDto;
-import com.example.QuanLyDanCu.dto.PaymentResponseDto;
 import com.example.QuanLyDanCu.dto.request.ThuPhiHoKhauRequestDto;
 import com.example.QuanLyDanCu.dto.response.ThuPhiHoKhauResponseDto;
 import com.example.QuanLyDanCu.service.ThuPhiHoKhauService;
@@ -130,83 +128,5 @@ public class ThuPhiHoKhauController {
     public ResponseEntity<String> delete(@PathVariable Long id, Authentication auth) {
         service.delete(id, auth);
         return ResponseEntity.ok("Đã xóa thu phí id = " + id);
-    }
-    
-    // ========================================================================
-    // PHASE 4: Business Rules Alignment Endpoints
-    // ========================================================================
-    
-    @PostMapping("/pay")
-    @Operation(
-        summary = "Ghi nhận thanh toán phí", 
-        description = "Ghi nhận thanh toán cho hộ khẩu theo quy tắc nghiệp vụ. " +
-                      "Hỗ trợ các loại phí: VS (Vệ sinh - 6000 VND/người/tháng), " +
-                      "DG (Đóng góp tự nguyện), DV (Dịch vụ). " +
-                      "Kiểm tra tránh trùng tháng đã thanh toán."
-    )
-    @ApiResponses(value = {
-        @ApiResponse(responseCode = "201", description = "Ghi nhận thanh toán thành công",
-            content = @Content(mediaType = "application/json", schema = @Schema(implementation = PaymentResponseDto.class))),
-        @ApiResponse(responseCode = "400", description = "Dữ liệu không hợp lệ hoặc tháng đã thanh toán"),
-        @ApiResponse(responseCode = "404", description = "Không tìm thấy hộ khẩu hoặc đợt thu phí")
-    })
-    public ResponseEntity<PaymentResponseDto> recordPayment(
-            @Valid @RequestBody PaymentRequestDto request) {
-        PaymentResponseDto response = service.recordPayment(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
-    }
-    
-    @GetMapping("/calc-v2")
-    @Operation(
-        summary = "Tính phí theo quy tắc nghiệp vụ mới", 
-        description = "Tính phí dựa trên công thức: totalAmount = numOfPeople * 6000 * months (cho phí vệ sinh). " +
-                      "Hỗ trợ các loại phí: VS (Vệ sinh), DG (Đóng góp), DV (Dịch vụ). " +
-                      "Trả về chi tiết tính toán bao gồm số nhân khẩu, số tháng, và tổng tiền."
-    )
-    @ApiResponses(value = {
-        @ApiResponse(responseCode = "200", description = "Tính phí thành công"),
-        @ApiResponse(responseCode = "400", description = "Thiếu tham số hoặc dữ liệu không hợp lệ"),
-        @ApiResponse(responseCode = "404", description = "Không tìm thấy hộ khẩu hoặc đợt thu phí")
-    })
-    public ResponseEntity<Map<String, Object>> calculateFeeWithMonths(
-            @Parameter(description = "ID hộ khẩu", example = "1", required = true)
-            @RequestParam Long hoKhauId,
-            
-            @Parameter(description = "ID đợt thu phí", example = "2", required = true)
-            @RequestParam Long dotThuPhiId,
-            
-            @Parameter(description = "Danh sách tháng cần thanh toán (VD: 10,11,12)", example = "10,11,12", required = true)
-            @RequestParam List<Integer> months,
-            
-            @Parameter(description = "Loại phí: VS (Vệ sinh), DG (Đóng góp), DV (Dịch vụ)", example = "VS", required = true)
-            @RequestParam String feeType) {
-        
-        Map<String, Object> result = service.calculateFeeWithMonths(hoKhauId, dotThuPhiId, months, feeType);
-        return ResponseEntity.ok(result);
-    }
-    
-    @GetMapping("/report")
-    @Operation(
-        summary = "Báo cáo thu phí", 
-        description = "Tạo báo cáo thống kê thu phí cho đợt thu phí. " +
-                      "Có thể lọc theo tháng và loại phí. " +
-                      "Trả về: tổng tiền thu, số hộ đã nộp, số hộ chưa nộp, tỷ lệ thu."
-    )
-    @ApiResponses(value = {
-        @ApiResponse(responseCode = "200", description = "Tạo báo cáo thành công"),
-        @ApiResponse(responseCode = "404", description = "Không tìm thấy đợt thu phí")
-    })
-    public ResponseEntity<Map<String, Object>> generateReport(
-            @Parameter(description = "ID đợt thu phí", example = "2", required = true)
-            @RequestParam Long dotThuPhiId,
-            
-            @Parameter(description = "Tháng cần báo cáo (1-12, tùy chọn)", example = "10")
-            @RequestParam(required = false) Integer month,
-            
-            @Parameter(description = "Loại phí: VS, DG, DV (tùy chọn)", example = "VS")
-            @RequestParam(required = false) String feeType) {
-        
-        Map<String, Object> report = service.generateReport(dotThuPhiId, month, feeType);
-        return ResponseEntity.ok(report);
     }
 }
