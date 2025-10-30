@@ -212,7 +212,7 @@ fi
 # Test register (with unique timestamp)
 TIMESTAMP=$(date +%s)
 test_endpoint "Auth" "POST" "/api/auth/register" "201" \
-    "{\"username\":\"testuser${TIMESTAMP}\",\"password\":\"test123\",\"role\":\"ROLE_TOTRUONG\",\"hoTen\":\"Test User\",\"email\":\"test${TIMESTAMP}@test.com\",\"sdt\":\"0900000000\"}" \
+    "{\"username\":\"testuser${TIMESTAMP}\",\"password\":\"test123\",\"role\":\"TOTRUONG\",\"hoTen\":\"Test User\",\"email\":\"test${TIMESTAMP}@test.com\",\"sdt\":\"0900000000\"}" \
     "Register new user"
 
 # ============================================================================
@@ -280,7 +280,7 @@ test_endpoint "DotThuPhi" "GET" "/api/dot-thu-phi" "200" "" "Get all fee periods
 
 # Create new fee period
 test_endpoint "DotThuPhi" "POST" "/api/dot-thu-phi" "201" \
-    "{\"tenDot\":\"Test Fee Period ${TIMESTAMP}\",\"loai\":\"VE_SINH\",\"ngayBatDau\":\"2025-11-01\",\"ngayKetThuc\":\"2025-11-30\",\"dinhMuc\":6000}" \
+    "{\"tenDot\":\"Test Fee Period ${TIMESTAMP}\",\"loai\":\"BAT_BUOC\",\"ngayBatDau\":\"2025-11-01\",\"ngayKetThuc\":\"2025-11-30\",\"dinhMuc\":6000}" \
     "Create new fee period"
 
 # Get fee period by ID
@@ -289,13 +289,28 @@ if [ -n "$CREATED_ID" ]; then
     
     # Update fee period
     test_endpoint "DotThuPhi" "PUT" "/api/dot-thu-phi/$CREATED_ID" "200" \
-        "{\"tenDot\":\"Updated Fee Period ${TIMESTAMP}\",\"loai\":\"VE_SINH\",\"ngayBatDau\":\"2025-11-01\",\"ngayKetThuc\":\"2025-11-30\",\"dinhMuc\":7000}" \
+        "{\"tenDot\":\"Updated Fee Period ${TIMESTAMP}\",\"loai\":\"BAT_BUOC\",\"ngayBatDau\":\"2025-11-01\",\"ngayKetThuc\":\"2025-11-30\",\"dinhMuc\":7000}" \
         "Update fee period"
 fi
 
 print_section "Phase 8: Module Integration Tests - Thu Phí Hộ Khẩu (Household Fees)"
 
-# Get all payments
+# Login as KETOAN for fee collection operations
+log_info "Logging in as KETOAN (ketoan01)..."
+KETOAN_LOGIN=$(curl -s -X POST "${BASE_URL}/api/auth/login" \
+    -H "Content-Type: application/json" \
+    -d '{"username":"ketoan01","password":"admin123"}')
+
+KETOAN_TOKEN=$(echo "$KETOAN_LOGIN" | grep -o '"token":"[^"]*' | cut -d'"' -f4)
+
+if [ -n "$KETOAN_TOKEN" ]; then
+    log_success "KETOAN login successful"
+else
+    log_error "KETOAN login failed"
+    exit 1
+fi
+
+# Get all payments (using admin token - read operations allowed)
 test_endpoint "ThuPhiHoKhau" "GET" "/api/thu-phi-ho-khau" "200" "" "Get all payments"
 
 # Get payment statistics
@@ -310,16 +325,31 @@ FIRST_DOTTHUPHI_ID=$(curl -s -H "Authorization: Bearer $ADMIN_TOKEN" "${BASE_URL
 if [ -n "$FIRST_HOKHAU_ID" ] && [ -n "$SECOND_HOKHAU_ID" ] && [ -n "$FIRST_DOTTHUPHI_ID" ]; then
     log_success "Found HoKhau IDs: $FIRST_HOKHAU_ID, $SECOND_HOKHAU_ID | DotThuPhi ID: $FIRST_DOTTHUPHI_ID"
     
-    # Test fee calculation
-    test_endpoint "ThuPhiHoKhau" "GET" "/api/thu-phi-ho-khau/calc?hoKhauId=${FIRST_HOKHAU_ID}&dotThuPhiId=${FIRST_DOTTHUPHI_ID}" "200" "" "Calculate fee for household"
+    # Test fee calculation (annual: 3 people * 6000 * 12 = 216,000)
+    test_endpoint "ThuPhiHoKhau" "GET" "/api/thu-phi-ho-khau/calc?hoKhauId=${FIRST_HOKHAU_ID}&dotThuPhiId=${FIRST_DOTTHUPHI_ID}" "200" "" "Calculate annual fee for household"
     
-    # Test calculation with discount (HoKhau ID 2 has elderly members)
-    test_endpoint "ThuPhiHoKhau" "GET" "/api/thu-phi-ho-khau/calc?hoKhauId=${SECOND_HOKHAU_ID}&dotThuPhiId=${FIRST_DOTTHUPHI_ID}" "200" "" "Calculate fee with elderly discount"
+    # Test calculation for second household (4 people * 6000 * 12 = 288,000)
+    test_endpoint "ThuPhiHoKhau" "GET" "/api/thu-phi-ho-khau/calc?hoKhauId=${SECOND_HOKHAU_ID}&dotThuPhiId=${FIRST_DOTTHUPHI_ID}" "200" "" "Calculate annual fee for second household"
     
-    # Create new payment record
-    test_endpoint "ThuPhiHoKhau" "POST" "/api/thu-phi-ho-khau" "201" \
-        "{\"hoKhauId\":${FIRST_HOKHAU_ID},\"dotThuPhiId\":${FIRST_DOTTHUPHI_ID},\"soTienDaThu\":18000,\"ngayThu\":\"2025-10-29\",\"months\":\"10\"}" \
-        "Create new payment record"
+    # Create new payment record (using KETOAN token)
+    # Note: soTienDaThu=216000 means full payment, should auto-set trangThai=DA_NOP
+    RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${BASE_URL}/api/thu-phi-ho-khau" \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer $KETOAN_TOKEN" \
+        -d "{\"hoKhauId\":${FIRST_HOKHAU_ID},\"dotThuPhiId\":${FIRST_DOTTHUPHI_ID},\"soTienDaThu\":216000,\"ngayThu\":\"2025-10-29\"}")
+    
+    HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+    CREATED_ID=$(echo "$RESPONSE" | head -n -1 | grep -o '"id":[0-9]*' | head -1 | cut -d':' -f2)
+    
+    if [ "$HTTP_CODE" = "201" ]; then
+        log_success "✓ ThuPhiHoKhau | POST /api/thu-phi-ho-khau | Expected: 201 | Got: $HTTP_CODE"
+        echo -e "   ${CYAN}→ Created resource with ID: $CREATED_ID${NC}"
+        PASSED=$((PASSED + 1))
+    else
+        log_error "✗ ThuPhiHoKhau | POST /api/thu-phi-ho-khau | Expected: 201 | Got: $HTTP_CODE"
+        FAILED=$((FAILED + 1))
+    fi
+    TOTAL=$((TOTAL + 1))
     
     # Get payment by ID
     if [ -n "$CREATED_ID" ]; then

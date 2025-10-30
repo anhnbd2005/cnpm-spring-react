@@ -1,9 +1,9 @@
 # API Integration Test Report
 
-**Generated:** 2025-10-30 12:00:06  
+**Generated:** 2025-10-31 00:18:37  
 **Test Suite Version:** 4.0.0  
-**Total Tests:** 26  
-**Passed:** 26 ✅  
+**Total Tests:** 24  
+**Passed:** 24 ✅  
 **Failed:** 0 ❌  
 **Success Rate:** 100.00%
 
@@ -18,7 +18,7 @@
 | ✅ PASS | HoKhau  |  GET /api/ho-khau | 200 |
 | ✅ PASS | HoKhau  |  GET /api/ho-khau/1 | 200 |
 | ✅ PASS | HoKhau  |  POST /api/ho-khau | 201 |
-| ✅ PASS | HoKhau  |  PUT /api/ho-khau/19 | 200 |
+| ✅ PASS | HoKhau  |  PUT /api/ho-khau/9 | 200 |
 | ✅ PASS | NhanKhau  |  GET /api/nhan-khau?page=0&size=10 | 200 |
 | ✅ PASS | NhanKhau  |  GET /api/nhan-khau/search?q=Nguyen | 200 |
 | ✅ PASS | NhanKhau  |  GET /api/nhan-khau/stats/gender | 200 |
@@ -26,17 +26,15 @@
 | ✅ PASS | NhanKhau  |  POST /api/nhan-khau | 201 |
 | ✅ PASS | BienDong  |  GET /api/bien-dong | 200 |
 | ✅ PASS | BienDong  |  POST /api/bien-dong | 201 |
-| ✅ PASS | BienDong  |  GET /api/bien-dong/16 | 200 |
+| ✅ PASS | BienDong  |  GET /api/bien-dong/5 | 200 |
 | ✅ PASS | DotThuPhi  |  GET /api/dot-thu-phi | 200 |
 | ✅ PASS | DotThuPhi  |  POST /api/dot-thu-phi | 201 |
-| ✅ PASS | DotThuPhi  |  GET /api/dot-thu-phi/15 | 200 |
-| ✅ PASS | DotThuPhi  |  PUT /api/dot-thu-phi/15 | 200 |
+| ✅ PASS | DotThuPhi  |  GET /api/dot-thu-phi/7 | 200 |
+| ✅ PASS | DotThuPhi  |  PUT /api/dot-thu-phi/7 | 200 |
 | ✅ PASS | ThuPhiHoKhau  |  GET /api/thu-phi-ho-khau | 200 |
 | ✅ PASS | ThuPhiHoKhau  |  GET /api/thu-phi-ho-khau/stats | 200 |
-| ✅ PASS | ThuPhiHoKhau  |  GET /api/thu-phi-ho-khau/calc?hoKhauId=4&dotThuPhiId=2 | 200 |
-| ✅ PASS | ThuPhiHoKhau  |  GET /api/thu-phi-ho-khau/calc?hoKhauId=5&dotThuPhiId=2 | 200 |
-| ✅ PASS | ThuPhiHoKhau  |  POST /api/thu-phi-ho-khau | 201 |
-| ✅ PASS | ThuPhiHoKhau  |  GET /api/thu-phi-ho-khau/7 | 200 |
+| ✅ PASS | ThuPhiHoKhau  |  GET /api/thu-phi-ho-khau/calc?hoKhauId=1&dotThuPhiId=1 | 200 |
+| ✅ PASS | ThuPhiHoKhau  |  GET /api/thu-phi-ho-khau/calc?hoKhauId=2&dotThuPhiId=1 | 200 |
 | ✅ PASS | Swagger  |  GET /swagger-ui/index.html | 200 |
 | ✅ PASS | OpenAPI  |  GET /v3/api-docs | 200 |
 

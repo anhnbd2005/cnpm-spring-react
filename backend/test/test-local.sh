@@ -298,7 +298,7 @@ test_endpoint "DotThuPhi" "GET" "/api/dot-thu-phi" "200" "" "Get all fee periods
 
 # Create new fee period
 test_endpoint "DotThuPhi" "POST" "/api/dot-thu-phi" "201" \
-    "{\"tenDot\":\"Test Fee Period ${TIMESTAMP}\",\"loai\":\"VE_SINH\",\"ngayBatDau\":\"2025-11-01\",\"ngayKetThuc\":\"2025-11-30\",\"dinhMuc\":6000}" \
+    "{\"tenDot\":\"Test Fee Period ${TIMESTAMP}\",\"loai\":\"BAT_BUOC\",\"ngayBatDau\":\"2025-11-01\",\"ngayKetThuc\":\"2025-11-30\",\"dinhMuc\":6000}" \
     "Create new fee period"
 
 # Get fee period by ID
@@ -307,7 +307,7 @@ if [ -n "$CREATED_ID" ]; then
     
     # Update fee period
     test_endpoint "DotThuPhi" "PUT" "/api/dot-thu-phi/$CREATED_ID" "200" \
-        "{\"tenDot\":\"Updated Fee Period ${TIMESTAMP}\",\"loai\":\"VE_SINH\",\"ngayBatDau\":\"2025-11-01\",\"ngayKetThuc\":\"2025-11-30\",\"dinhMuc\":7000}" \
+        "{\"tenDot\":\"Updated Fee Period ${TIMESTAMP}\",\"loai\":\"BAT_BUOC\",\"ngayBatDau\":\"2025-11-01\",\"ngayKetThuc\":\"2025-11-30\",\"dinhMuc\":7000}" \
         "Update fee period"
 fi
 

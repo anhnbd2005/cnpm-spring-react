@@ -113,34 +113,38 @@ Citizens are distributed across households with realistic demographics:
 
 | Type | Description | Amount | Calculation |
 |------|-------------|--------|-------------|
-| VE_SINH (Monthly) | Sanitation fee Jan 2025 | 6,000 VND | Per person |
-| VE_SINH (Monthly) | Sanitation fee Feb 2025 | 6,000 VND | Per person |
-| VE_SINH (Monthly) | Sanitation fee Mar 2025 | 6,000 VND | Per person |
-| QUAN_LY (Quarterly) | Management fee Q1 2025 | 50,000 VND | Per household |
-| QUAN_LY (Quarterly) | Management fee Q2 2025 | 50,000 VND | Per household |
-| DONG_GOP | Cultural center contribution | 100,000 VND | Voluntary |
+| BAT_BUOC (Mandatory) | Sanitation fee Jan 2025 | 6,000 VND | Per person |
+| BAT_BUOC (Mandatory) | Sanitation fee Feb 2025 | 6,000 VND | Per person |
+| BAT_BUOC (Mandatory) | Sanitation fee Mar 2025 | 6,000 VND | Per person |
+| BAT_BUOC (Mandatory) | Management fee Q1 2025 | 50,000 VND | Per household |
+| BAT_BUOC (Mandatory) | Management fee Q2 2025 | 50,000 VND | Per household |
+| TU_NGUYEN (Voluntary) | Cultural center contribution | 100,000 VND | Voluntary |
+
+**Note:** Fee types are now standardized using the `LoaiThuPhi` enum:
+- `BAT_BUOC` (Bắt buộc): Mandatory fees such as sanitation, management, security, etc.
+- `TU_NGUYEN` (Tự nguyện): Voluntary contributions for community projects
 
 ### Payment Records (18 scenarios)
 
 | Household | Fee Period | Amount Paid | Discount Applied | Status |
 |-----------|------------|-------------|------------------|--------|
-| HK001 | Jan VE_SINH | 18,000 VND | No | ✅ Paid |
-| HK001 | Feb VE_SINH | 18,000 VND | No | ✅ Paid |
-| HK002 | Jan VE_SINH | 19,200 VND | Yes (20%) | ✅ Paid |
-| HK003 | Jan VE_SINH | 14,400 VND | Yes (20%) | ✅ Paid |
-| HK003 | Feb VE_SINH | 14,400 VND | Yes (20%) | ✅ Paid |
-| HK004 | Jan VE_SINH | 24,000 VND | Yes (20%) | ✅ Paid |
-| HK004 | Feb VE_SINH | 24,000 VND | Yes (20%) | ✅ Paid |
-| HK005 | Jan VE_SINH | 33,600 VND | Yes (20%) | ✅ Paid |
-| HK005 | Feb VE_SINH | 33,600 VND | Yes (20%) | ✅ Paid |
-| HK006 | Jan VE_SHIN | 6,000 VND | No | ✅ Paid |
-| HK006 | Feb VE_SINH | 6,000 VND | No | ✅ Paid |
-| HK007 | Jan VE_SINH | 12,000 VND | No | ✅ Paid |
-| HK007 | Feb VE_SINH | - | - | ❌ Unpaid |
+| HK001 | Jan Sanitation | 18,000 VND | No | ✅ Paid |
+| HK001 | Feb Sanitation | 18,000 VND | No | ✅ Paid |
+| HK002 | Jan Sanitation | 19,200 VND | Yes (20%) | ✅ Paid |
+| HK003 | Jan Sanitation | 14,400 VND | Yes (20%) | ✅ Paid |
+| HK003 | Feb Sanitation | 14,400 VND | Yes (20%) | ✅ Paid |
+| HK004 | Jan Sanitation | 24,000 VND | Yes (20%) | ✅ Paid |
+| HK004 | Feb Sanitation | 24,000 VND | Yes (20%) | ✅ Paid |
+| HK005 | Jan Sanitation | 33,600 VND | Yes (20%) | ✅ Paid |
+| HK005 | Feb Sanitation | 33,600 VND | Yes (20%) | ✅ Paid |
+| HK006 | Jan Sanitation | 6,000 VND | No | ✅ Paid |
+| HK006 | Feb Sanitation | 6,000 VND | No | ✅ Paid |
+| HK007 | Jan Sanitation | 12,000 VND | No | ✅ Paid |
+| HK007 | Feb Sanitation | - | - | ❌ Unpaid |
 | HK008 | All | - | - | ❌ Unpaid (new) |
-| HK001 | Q1 QUAN_LY | 50,000 VND | No | ✅ Paid |
-| HK003 | Q1 QUAN_LY | 50,000 VND | No | ✅ Paid |
-| HK005 | Q1 QUAN_LY | 50,000 VND | No | ✅ Paid |
+| HK001 | Q1 Management | 50,000 VND | No | ✅ Paid |
+| HK003 | Q1 Management | 50,000 VND | No | ✅ Paid |
+| HK005 | Q1 Management | 50,000 VND | No | ✅ Paid |
 | Various | Contribution | 200K-300K VND | No | ✅ Voluntary |
 
 ### Population Changes (4 events)
@@ -269,7 +273,7 @@ Citizens are distributed across households with realistic demographics:
 
 **Scenarios Tested:**
 - ✅ List all fee periods (6 seeded records)
-- ✅ Create new monthly fee period (VE_SINH)
+- ✅ Create new mandatory fee period (BAT_BUOC)
 - ✅ Retrieve fee period details
 - ✅ Update fee amount (`dinhMuc`)
 - ✅ Date range validation (`ngayBatDau`, `ngayKetThuc`)
@@ -277,7 +281,7 @@ Citizens are distributed across households with realistic demographics:
 **Authorization:** ROLE_ADMIN, ROLE_TOTRUONG
 
 **Business Rules:**
-- Types: `VE_SINH` (sanitation), `QUAN_LY` (management), `DONG_GOP` (contribution)
+- Types: `BAT_BUOC` (mandatory) or `TU_NGUYEN` (voluntary)
 - `dinhMuc` defines base fee amount
 - Date range must be valid (end date after start date)
 
@@ -349,21 +353,21 @@ The test suite validates the core business logic for fee calculation:
 
 #### Scenario 1: No Discount (HK001)
 - **Household:** HK001 (3 working-age adults)
-- **Fee Period:** Jan 2025 VE_SINH (6,000 VND per person)
+- **Fee Period:** Jan 2025 Sanitation (BAT_BUOC - 6,000 VND per person)
 - **Calculation:** 3 members × 6,000 VND = **18,000 VND**
 - **Discount:** None (no elderly or students)
 - **Test:** `GET /api/thu-phi-ho-khau/calc?hoKhauId=1&dotThuPhiId=1`
 
 #### Scenario 2: Elderly Discount (HK002)
 - **Household:** HK002 (4 members, includes 1 elderly ≥60)
-- **Fee Period:** Jan 2025 VE_SINH (6,000 VND per person)
+- **Fee Period:** Jan 2025 Sanitation (BAT_BUOC - 6,000 VND per person)
 - **Calculation:** 4 members × 6,000 VND × 0.8 = **19,200 VND**
 - **Discount:** 20% (has elderly member)
 - **Test:** `GET /api/thu-phi-ho-khau/calc?hoKhauId=2&dotThuPhiId=1`
 
 #### Scenario 3: Student Discount (HK003)
 - **Household:** HK003 (3 members, includes 1 student ≤22)
-- **Fee Period:** Jan 2025 VE_SINH (6,000 VND per person)
+- **Fee Period:** Jan 2025 Sanitation (BAT_BUOC - 6,000 VND per person)
 - **Calculation:** 3 members × 6,000 VND × 0.8 = **14,400 VND**
 - **Discount:** 20% (has student member)
 - **Seed Data:** Pre-calculated in `test-seed.sql`
