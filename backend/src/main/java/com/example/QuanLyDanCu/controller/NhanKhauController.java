@@ -38,7 +38,7 @@ public class NhanKhauController {
         @ApiResponse(responseCode = "200", description = "Lấy danh sách thành công")
     })
     public ResponseEntity<List<NhanKhauResponseDto>> getAll() {
-        return ResponseEntity.ok(nhanKhauService.getAllDto());
+        return ResponseEntity.ok(nhanKhauService.getAll());
     }
 
     @GetMapping("/{id}")
@@ -50,7 +50,7 @@ public class NhanKhauController {
     public ResponseEntity<NhanKhauResponseDto> getById(
             @Parameter(description = "ID của nhân khẩu", example = "1")
             @PathVariable Long id) {
-        return ResponseEntity.ok(nhanKhauService.getByIdDto(id));
+        return ResponseEntity.ok(nhanKhauService.getById(id));
     }
 
     @PostMapping
@@ -63,7 +63,7 @@ public class NhanKhauController {
     public ResponseEntity<NhanKhauResponseDto> create(
             @Valid @RequestBody NhanKhauRequestDto dto,
             Authentication auth) {
-        NhanKhauResponseDto created = nhanKhauService.createDto(dto, auth);
+        NhanKhauResponseDto created = nhanKhauService.create(dto, auth);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
@@ -79,7 +79,7 @@ public class NhanKhauController {
             @PathVariable Long id,
             @Valid @RequestBody NhanKhauRequestDto dto,
             Authentication auth) {
-        return ResponseEntity.ok(nhanKhauService.updateDto(id, dto, auth));
+        return ResponseEntity.ok(nhanKhauService.update(id, dto, auth));
     }
 
     @DeleteMapping("/{id}")

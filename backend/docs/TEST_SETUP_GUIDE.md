@@ -80,13 +80,15 @@ This testing framework provides:
 
 ## Quick Start
 
-### 1. Clone and Navigate to Project
+### Option 1: Docker Environment (Recommended)
+
+#### 1. Clone and Navigate to Project
 
 ```bash
 cd /path/to/cnpm-spring-react/backend
 ```
 
-### 2. Start Docker Containers
+#### 2. Start Docker Containers
 
 ```bash
 docker-compose up -d
@@ -105,7 +107,7 @@ quanlydancu-backend       Up
 adminer-prod              Up
 ```
 
-### 3. Create Database and Apply Schema
+#### 3. Create Database and Apply Schema
 
 ```bash
 # Create database
@@ -115,7 +117,7 @@ docker exec quanlydancu-postgres psql -U postgres -c "CREATE DATABASE quanlydanc
 docker exec -i quanlydancu-postgres psql -U postgres -d quanlydancu < quanlydancu.sql
 ```
 
-### 4. Run Tests
+#### 4. Run Tests
 
 ```bash
 ./test/test-all.sh
@@ -143,6 +145,40 @@ Expected output:
 
 ---
 
+### Option 2: Local Environment (No Docker)
+
+#### 1. Prerequisites
+
+- PostgreSQL 15 installed and running locally
+- Spring Boot application running on port 8080
+- Database `quanlydancu` created with schema applied
+
+#### 2. Setup
+
+```bash
+cd /path/to/cnpm-spring-react/backend
+
+# Create database (if not exists)
+psql -U postgres -c "CREATE DATABASE quanlydancu;"
+
+# Apply schema
+psql -U postgres -d quanlydancu -f quanlydancu.sql
+
+# Start Spring Boot (in separate terminal)
+mvn spring-boot:run
+# OR run QuanLyDanCuApplication.java from IntelliJ
+```
+
+#### 3. Run Tests
+
+```bash
+./test/test-local.sh
+```
+
+Expected output: Same as Docker version with "Local (No Docker)" mode indicator.
+
+---
+
 ## Test Structure
 
 ### Directory Layout
@@ -150,12 +186,14 @@ Expected output:
 ```
 backend/
 ├── test/
-│   ├── test-all.sh                    # Main unified test script
+│   ├── test-all.sh                    # Main unified test script (Docker)
+│   ├── test-local.sh                  # Local test script (No Docker) 🆕
 │   └── seed-data/
 │       └── test-seed.sql              # Realistic test data
 ├── docs/
 │   ├── API_TEST_REPORT.md             # Generated test report
-│   └── TEST_SETUP_GUIDE.md            # This file
+│   ├── TEST_SETUP_GUIDE.md            # This file
+│   └── TEST_COVERAGE_OVERVIEW.md      # Comprehensive test coverage docs
 ├── test-api-all.sh                    # Legacy test script
 ├── test-calc-fee.sh                   # Fee calculation tests
 └── docker-compose.yml                 # Docker configuration
@@ -301,6 +339,94 @@ set +x  # Disable debug mode
 # Payment tests
 ./test-payment.sh
 ```
+
+### Local Testing (No Docker)
+
+If you prefer to run tests against a locally running Spring Boot application without Docker:
+
+#### Prerequisites
+
+1. **PostgreSQL 15** installed locally (not in Docker)
+   ```bash
+   # Verify PostgreSQL is running
+   psql --version  # Should be 15.x
+   pg_isready -h localhost -p 5432
+   ```
+
+2. **Database setup**
+   ```bash
+   # Create database
+   psql -U postgres -c "CREATE DATABASE quanlydancu;"
+   
+   # Apply schema
+   psql -U postgres -d quanlydancu -f quanlydancu.sql
+   ```
+
+3. **Backend running locally**
+   - Start Spring Boot application on port 8080
+   - Via IntelliJ IDEA: Run `QuanLyDanCuApplication.java`
+   - Or via Maven: `mvn spring-boot:run`
+
+4. **Configure application.properties** for local PostgreSQL
+   ```properties
+   spring.datasource.url=jdbc:postgresql://localhost:5432/quanlydancu
+   spring.datasource.username=postgres
+   spring.datasource.password=postgres
+   ```
+
+#### Running Local Tests
+
+```bash
+# Run all tests against local setup
+./test/test-local.sh
+
+# Run without cleanup (keep test data for inspection)
+SKIP_CLEANUP=true ./test/test-local.sh
+```
+
+#### Configuration
+
+The local test script uses these default values (can be overridden via environment variables):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BASE_URL` | `http://localhost:8080` | Backend API base URL |
+| `POSTGRES_HOST` | `localhost` | PostgreSQL host |
+| `POSTGRES_PORT` | `5432` | PostgreSQL port |
+| `POSTGRES_USER` | `postgres` | Database username |
+| `POSTGRES_PASSWORD` | `postgres` | Database password |
+| `POSTGRES_DB` | `quanlydancu` | Database name |
+
+**Example with custom configuration:**
+```bash
+POSTGRES_PASSWORD=mypassword ./test/test-local.sh
+```
+
+#### Differences from Docker Version
+
+| Feature | Docker (`test-all.sh`) | Local (`test-local.sh`) |
+|---------|------------------------|-------------------------|
+| Container checks | ✅ Yes | ❌ No |
+| Auto-start containers | ✅ Yes | ❌ No |
+| Database connection | Docker exec | Direct psql |
+| Backend startup | Docker-managed | Manual (IntelliJ/Maven) |
+| Seed data loading | Docker exec | Direct psql |
+| API tests | Identical | Identical |
+| Test count | 26 | 26 |
+
+#### When to Use Local Tests
+
+- ✅ **During active development** - faster iteration without Docker overhead
+- ✅ **Debugging with IDE** - attach debugger to running Spring Boot app
+- ✅ **Limited resources** - avoid Docker memory usage
+- ✅ **CI/CD pipelines** - some environments don't support Docker-in-Docker
+
+#### When to Use Docker Tests
+
+- ✅ **Production-like environment** - isolated containers
+- ✅ **Team consistency** - same environment for all developers
+- ✅ **Clean slate** - containers can be recreated easily
+- ✅ **No local PostgreSQL** - don't want to install database locally
 
 ### Manual Test Steps
 

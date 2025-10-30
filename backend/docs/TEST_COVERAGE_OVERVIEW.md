@@ -39,7 +39,8 @@ This document describes the comprehensive test coverage for the QuanLyDanCu (Pop
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `test/test-all.sh` | 451 | Unified test suite with 11 phases |
+| `test/test-all.sh` | 451 | Unified test suite with Docker (11 phases) |
+| `test/test-local.sh` | 451 | Local test suite without Docker (11 phases) 🆕 |
 | `test/seed-data/test-seed.sql` | 249 | Reproducible test data for all entities |
 | `docs/API_TEST_REPORT.md` | Generated | Auto-generated test execution report |
 
@@ -500,16 +501,38 @@ Requests include: `Authorization: Bearer $ADMIN_TOKEN`
 
 ### Prerequisites
 
+**Docker Environment (test-all.sh):**
 1. **Docker Desktop** running
 2. **PostgreSQL container** (`quanlydancu-postgres`) running
 3. **Backend container** (`quanlydancu-backend`) running
 4. **Port 8080** available for backend
 
+**Local Environment (test-local.sh):** 🆕
+1. **PostgreSQL 15** installed and running locally
+2. **Spring Boot application** running on port 8080 (via Maven or IntelliJ)
+3. **Database** `quanlydancu` created with schema applied
+4. **Port 5432** available for PostgreSQL
+
 ### One-Click Execution
 
+**Option 1: Docker Environment (Recommended)**
 ```bash
 cd /Users/nqd2005/Documents/Project_CNPM/cnpm-spring-react/backend
 ./test/test-all.sh
+```
+
+**Option 2: Local Environment (No Docker)** 🆕
+```bash
+cd /Users/nqd2005/Documents/Project_CNPM/cnpm-spring-react/backend
+
+# Ensure PostgreSQL is running
+pg_isready -h localhost -p 5432
+
+# Ensure backend is running
+curl -s http://localhost:8080/swagger-ui/index.html > /dev/null && echo "Backend is ready"
+
+# Run tests
+./test/test-local.sh
 ```
 
 ### What Happens During Execution
@@ -544,8 +567,32 @@ cd /Users/nqd2005/Documents/Project_CNPM/cnpm-spring-react/backend
 
 To preserve test data for manual inspection:
 
+**Docker:**
 ```bash
 SKIP_CLEANUP=true ./test/test-all.sh
+```
+
+**Local:** 🆕
+```bash
+SKIP_CLEANUP=true ./test/test-local.sh
+```
+
+### Custom Configuration (Local Tests Only) 🆕
+
+Override default PostgreSQL connection settings:
+
+```bash
+# Custom password
+POSTGRES_PASSWORD=mypassword ./test/test-local.sh
+
+# Custom host and port
+POSTGRES_HOST=192.168.1.100 POSTGRES_PORT=5433 ./test/test-local.sh
+
+# Custom database name
+POSTGRES_DB=my_test_db ./test/test-local.sh
+
+# Custom backend URL
+BASE_URL=http://localhost:9090 ./test/test-local.sh
 ```
 
 ---

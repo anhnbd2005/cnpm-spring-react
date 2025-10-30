@@ -30,23 +30,23 @@ public class NhanKhauService {
     // ========== DTO-based methods ==========
 
     // Lấy tất cả nhân khẩu (DTO)
-    public List<NhanKhauResponseDto> getAllDto() {
+    public List<NhanKhauResponseDto> getAll() {
         return nhanKhauRepo.findAll().stream()
-                .map(this::toResponseDto)
+                .map(this::toResponseDTO)
                 .collect(Collectors.toList());
     }
 
     // Lấy nhân khẩu theo id (DTO)
-    public NhanKhauResponseDto getByIdDto(Long id) {
+    public NhanKhauResponseDto getById(Long id) {
         NhanKhau nk = nhanKhauRepo.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy nhân khẩu id = " + id));
-        return toResponseDto(nk);
+        return toResponseDTO(nk);
     }
 
     // Thêm nhân khẩu mới (DTO)
-    public NhanKhauResponseDto createDto(NhanKhauRequestDto dto, Authentication auth) {
+    public NhanKhauResponseDto create(NhanKhauRequestDto dto, Authentication auth) {
         String role = auth.getAuthorities().iterator().next().getAuthority();
-        if (!role.equals("ROLE_ADMIN") && !role.equals("ROLE_TOTRUONG")) {
+        if (!role.equals("ADMIN") && !role.equals("TOTRUONG")) {
             throw new AccessDeniedException("Bạn không có quyền thêm nhân khẩu!");
         }
 
@@ -75,13 +75,13 @@ public class NhanKhauService {
                 .build();
 
         NhanKhau saved = nhanKhauRepo.save(nk);
-        return toResponseDto(saved);
+        return toResponseDTO(saved);
     }
 
     // Cập nhật nhân khẩu (DTO)
-    public NhanKhauResponseDto updateDto(Long id, NhanKhauRequestDto dto, Authentication auth) {
+    public NhanKhauResponseDto update(Long id, NhanKhauRequestDto dto, Authentication auth) {
         String role = auth.getAuthorities().iterator().next().getAuthority();
-        if (!role.equals("ROLE_ADMIN") && !role.equals("ROLE_TOTRUONG")) {
+        if (!role.equals("ADMIN") && !role.equals("TOTRUONG")) {
             throw new AccessDeniedException("Bạn không có quyền sửa nhân khẩu!");
         }
 
@@ -159,11 +159,11 @@ public class NhanKhauService {
         existing.setUpdatedBy(user.getId());
 
         NhanKhau saved = nhanKhauRepo.save(existing);
-        return toResponseDto(saved);
+        return toResponseDTO(saved);
     }
 
     // Mapper: Entity -> Response DTO
-    private NhanKhauResponseDto toResponseDto(NhanKhau nk) {
+    private NhanKhauResponseDto toResponseDTO(NhanKhau nk) {
         return NhanKhauResponseDto.builder()
                 .id(nk.getId())
                 .hoTen(nk.getHoTen())
@@ -191,83 +191,10 @@ public class NhanKhauService {
                 .build();
     }
 
-    // ========== Entity-based methods (keeping for special operations) ==========
-
-    // Lấy tất cả nhân khẩu
-    public List<NhanKhau> getAll() {
-        return nhanKhauRepo.findAll();
-    }
-
-    // Lấy nhân khẩu theo id
-    public NhanKhau getById(Long id) {
-        return nhanKhauRepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy nhân khẩu id = " + id));
-    }
-
-    // Thêm nhân khẩu mới
-    public NhanKhau create(NhanKhau nk, Authentication auth) {
-        String role = auth.getAuthorities().iterator().next().getAuthority();
-        if (!role.equals("ROLE_ADMIN") && !role.equals("ROLE_TOTRUONG")) {
-            throw new AccessDeniedException("Bạn không có quyền thêm nhân khẩu!");
-        }
-
-        // Lấy ID người hiện tại từ Authentication
-        TaiKhoan user = taiKhoanRepo.findByTenDangNhap(auth.getName())
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy user"));
-
-        nk.setCreatedAt(LocalDateTime.now()); // timestamp hệ thống
-        nk.setCreatedBy(user.getId());        // ID người tạo
-        nk.setUpdatedAt(LocalDateTime.now()); // timestamp hệ thống
-        nk.setUpdatedBy(user.getId());
-
-        return nhanKhauRepo.save(nk);
-    }
-
-    // Cập nhật nhân khẩu
-    public NhanKhau update(Long id, NhanKhau nk, Authentication auth) {
-        String role = auth.getAuthorities().iterator().next().getAuthority();
-        if (!role.equals("ROLE_ADMIN") && !role.equals("ROLE_TOTRUONG")) {
-            throw new AccessDeniedException("Bạn không có quyền sửa nhân khẩu!");
-        }
-
-        NhanKhau existing = nhanKhauRepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy nhân khẩu id = " + id));
-
-        TaiKhoan user = taiKhoanRepo.findByTenDangNhap(auth.getName())
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy user"));
-        boolean changed = false;
-
-        // --- Cập nhật thông tin nhân khẩu ---
-        if (nk.getHoTen() != null && !Objects.equals(existing.getHoTen(), nk.getHoTen())) {
-            existing.setHoTen(nk.getHoTen());
-            changed = true;
-        }
-
-        if (nk.getNgaySinh() != null && !Objects.equals(existing.getNgaySinh(), nk.getNgaySinh())) {
-            existing.setNgaySinh(nk.getNgaySinh());
-            changed = true;
-        }
-
-        if (nk.getGioiTinh() != null && !Objects.equals(existing.getGioiTinh(), nk.getGioiTinh())) {
-            existing.setGioiTinh(nk.getGioiTinh());
-            changed = true;
-        }
-
-        // Nếu không có gì thay đổi
-        if (!changed) {
-            throw new RuntimeException("Không có gì để thay đổi!");
-        }
-
-        existing.setUpdatedAt(LocalDateTime.now()); // timestamp update
-        existing.setUpdatedBy(user.getId());        // ID người sửa
-
-        return nhanKhauRepo.save(existing);
-    }
-
     // Xóa nhân khẩu
     public void delete(Long id, Authentication auth) {
         String role = auth.getAuthorities().iterator().next().getAuthority();
-        if (!role.equals("ROLE_ADMIN") && !role.equals("ROLE_TOTRUONG")) {
+        if (!role.equals("ADMIN") && !role.equals("TOTRUONG")) {
             throw new AccessDeniedException("Bạn không có quyền xóa nhân khẩu!");
         }
 
@@ -418,7 +345,7 @@ public class NhanKhauService {
     // --- helper ---
     private void checkRole(Authentication auth) {
         String role = auth.getAuthorities().iterator().next().getAuthority();
-        if (!role.equals("ROLE_ADMIN") && !role.equals("ROLE_TOTRUONG")) {
+        if (!role.equals("ROLE_ADMIN") && !role.equals("TOTRUONG")) {
             throw new AccessDeniedException("Bạn không có quyền thực hiện thao tác này!");
         }
     }
