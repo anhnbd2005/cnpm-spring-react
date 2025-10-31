@@ -5,6 +5,7 @@ import lombok.*;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 @Schema(description = "Response DTO for HoKhau entity")
@@ -42,4 +43,7 @@ public class HoKhauResponseDto {
 
     @Schema(description = "Thời gian cập nhật")
     private LocalDateTime updatedAt;
+
+    @Schema(description = "Danh sách nhân khẩu thuộc hộ khẩu")
+    private List<NhanKhauResponseDto> listNhanKhau;
 }

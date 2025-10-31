@@ -14,6 +14,7 @@ import com.example.QuanLyDanCu.repository.NhanKhauRepository;
 import com.example.QuanLyDanCu.repository.TaiKhoanRepository;
 import com.example.QuanLyDanCu.repository.ThuPhiHoKhauRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -29,6 +30,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ThuPhiHoKhauService {
 
     private final ThuPhiHoKhauRepository repo;
@@ -88,8 +90,8 @@ public class ThuPhiHoKhauService {
     /**
      * Tính tổng phí hàng năm: 6000 * 12 * số_người
      */
-    private BigDecimal calculateAnnualFee(int numberOfPeople) {
-        return MONTHLY_FEE
+    private BigDecimal calculateAnnualFee(int numberOfPeople, BigDecimal monthlyFeePerPerson) {
+        return monthlyFeePerPerson
                 .multiply(BigDecimal.valueOf(MONTHS_PER_YEAR))
                 .multiply(BigDecimal.valueOf(numberOfPeople));
     }
@@ -120,7 +122,7 @@ public class ThuPhiHoKhauService {
 
         // Tính số người và tổng phí tự động
         int soNguoi = countActiveMembersInHousehold(dto.getHoKhauId());
-        BigDecimal tongPhi = calculateAnnualFee(soNguoi);
+        BigDecimal tongPhi = calculateAnnualFee(soNguoi, dotThuPhi.getDinhMuc());
         TrangThaiThuPhi trangThai = determineStatus(dto.getSoTienDaThu(), tongPhi);
 
         // Tự động tạo period description
@@ -170,7 +172,8 @@ public class ThuPhiHoKhauService {
         // Nếu thay đổi hộ khẩu, tính lại số người và tổng phí
         if (hoKhauChanged) {
             int soNguoi = countActiveMembersInHousehold(existing.getHoKhau().getId());
-            BigDecimal tongPhi = calculateAnnualFee(soNguoi);
+            DotThuPhi dotThuPhi = existing.getDotThuPhi();
+            BigDecimal tongPhi = calculateAnnualFee(soNguoi, dotThuPhi.getDinhMuc());
             existing.setSoNguoi(soNguoi);
             existing.setTongPhi(tongPhi);
         }
@@ -253,7 +256,7 @@ public class ThuPhiHoKhauService {
         int memberCount = countActiveMembersInHousehold(hoKhauId);
         
         // Tính phí hàng năm
-        BigDecimal totalFee = calculateAnnualFee(memberCount);
+        BigDecimal totalFee = calculateAnnualFee(memberCount, dotThuPhi.getDinhMuc());
         
         // Build response
         Map<String, Object> result = new LinkedHashMap<>();
@@ -263,7 +266,7 @@ public class ThuPhiHoKhauService {
         result.put("dotThuPhiId", dotThuPhiId);
         result.put("tenDot", dotThuPhi.getTenDot());
         result.put("memberCount", memberCount);
-        result.put("monthlyFeePerPerson", MONTHLY_FEE);
+        result.put("monthlyFeePerPerson", dotThuPhi.getDinhMuc());
         result.put("monthsPerYear", MONTHS_PER_YEAR);
         result.put("totalFee", totalFee);
         result.put("formula", String.format("%s * %d * %d = %s", 
@@ -296,5 +299,137 @@ public class ThuPhiHoKhauService {
         stats.put("unpaidRecords", unpaidCount);
         
         return stats;
+    }
+
+    /**
+     * Recalculate fees for a specific household across all fee periods.
+     * This is triggered by events when household or citizen data changes.
+     * 
+     * @param hoKhauId The household ID to recalculate fees for
+     */
+    @Transactional
+    public void recalculateForHousehold(Long hoKhauId) {
+        log.info("Starting fee recalculation for household: {}", hoKhauId);
+        
+        // Verify household exists
+        hoKhauRepo.findById(hoKhauId)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy hộ khẩu id = " + hoKhauId));
+        
+        // Count current eligible members (excluding tam_vang)
+        int activeMemberCount = countActiveMembersInHousehold(hoKhauId);
+        log.debug("Household {} has {} active members (excluding temporarily absent)", 
+                  hoKhauId, activeMemberCount);
+        
+        // Find all ThuPhiHoKhau records for this household
+        List<ThuPhiHoKhau> feeRecords = repo.findByHoKhauId(hoKhauId);
+        
+        if (feeRecords.isEmpty()) {
+            log.info("No fee records found for household {}. Skipping recalculation.", hoKhauId);
+            return;
+        }
+        
+        // Recalculate each fee record
+        for (ThuPhiHoKhau record : feeRecords) {
+            BigDecimal oldTongPhi = record.getTongPhi();
+            int oldSoNguoi = record.getSoNguoi() != null ? record.getSoNguoi() : 0;
+            
+            // Get dinh_muc from the fee period
+            DotThuPhi dotThuPhi = record.getDotThuPhi();
+            BigDecimal dinhMuc = dotThuPhi.getDinhMuc();
+            
+            // Calculate new total fee
+            BigDecimal newTongPhi = calculateAnnualFee(activeMemberCount, dinhMuc);
+            
+            // Update record
+            record.setSoNguoi(activeMemberCount);
+            record.setTongPhi(newTongPhi);
+            
+            // Recalculate status based on new total
+            TrangThaiThuPhi newStatus = determineStatus(record.getSoTienDaThu(), newTongPhi);
+            record.setTrangThai(newStatus);
+            
+            repo.save(record);
+            
+            log.info("Updated fee record ID {} for household {}: soNguoi {} → {}, tongPhi {} → {}, status: {}", 
+                     record.getId(), hoKhauId, oldSoNguoi, activeMemberCount, 
+                     oldTongPhi, newTongPhi, newStatus);
+        }
+        
+        log.info("Completed fee recalculation for household {}. Updated {} record(s).", 
+                 hoKhauId, feeRecords.size());
+    }
+
+    /**
+     * Create ThuPhiHoKhau record for a newly created household.
+     * Uses the most recent active fee period (DotThuPhi).
+     * 
+     * @param hoKhauId The newly created household ID
+     */
+    @Transactional
+    public void createInitialFeeRecord(Long hoKhauId) {
+        log.info("Creating initial fee record for new household: {}", hoKhauId);
+        
+        // Verify household exists
+        HoKhau hoKhau = hoKhauRepo.findById(hoKhauId)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy hộ khẩu id = " + hoKhauId));
+        
+        // Find the most recent active fee period
+        List<DotThuPhi> dotThuPhiList = dotThuPhiRepo.findAll();
+        if (dotThuPhiList.isEmpty()) {
+            log.warn("No fee periods (DotThuPhi) found. Cannot create initial fee record for household {}", hoKhauId);
+            return;
+        }
+        
+        // Use the first fee period (or most recent if sorted by ngayBatDau desc)
+        DotThuPhi dotThuPhi = dotThuPhiList.get(0);
+        
+        // Count active members
+        int activeMemberCount = countActiveMembersInHousehold(hoKhauId);
+        
+        // Calculate total fee
+        BigDecimal tongPhi = calculateAnnualFee(activeMemberCount, dotThuPhi.getDinhMuc());
+        
+        // Create new fee record with zero payment
+        ThuPhiHoKhau newRecord = ThuPhiHoKhau.builder()
+                .hoKhau(hoKhau)
+                .dotThuPhi(dotThuPhi)
+                .soNguoi(activeMemberCount)
+                .tongPhi(tongPhi)
+                .soTienDaThu(BigDecimal.ZERO)
+                .trangThai(TrangThaiThuPhi.CHUA_NOP)
+                .periodDescription("Cả năm " + LocalDate.now().getYear())
+                .ngayThu(null)
+                .ghiChu("Tự động tạo khi tạo hộ khẩu mới")
+                .collectedBy(null)
+                .createdAt(LocalDateTime.now())
+                .build();
+        
+        ThuPhiHoKhau saved = repo.save(newRecord);
+        
+        log.info("Created initial fee record ID {} for household {}: soNguoi={}, tongPhi={}", 
+                 saved.getId(), hoKhauId, activeMemberCount, tongPhi);
+    }
+
+    /**
+     * Delete all ThuPhiHoKhau records for a household.
+     * This is triggered when a household is deleted.
+     * 
+     * @param hoKhauId The household ID to delete fee records for
+     */
+    @Transactional
+    public void deleteAllForHousehold(Long hoKhauId) {
+        log.info("Deleting all fee records for household: {}", hoKhauId);
+        
+        List<ThuPhiHoKhau> feeRecords = repo.findByHoKhauId(hoKhauId);
+        
+        if (feeRecords.isEmpty()) {
+            log.info("No fee records found for household {}. Nothing to delete.", hoKhauId);
+            return;
+        }
+        
+        int recordCount = feeRecords.size();
+        repo.deleteAll(feeRecords);
+        
+        log.info("Deleted {} fee record(s) for household {}", recordCount, hoKhauId);
     }
 }
