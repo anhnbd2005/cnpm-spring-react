@@ -154,43 +154,181 @@ INSERT INTO dot_thu_phi (ten_dot, loai, ngay_bat_dau, ngay_ket_thuc, dinh_muc, c
 
 -- ============================================================================
 -- 5. THU_PHI_HO_KHAU (Household Fee Payments)
--- Based on NEW business rules: Annual sanitation fee = 6000 * 12 * people_count
+-- Based on NEW v1.1 business rules: Annual sanitation fee = dinh_muc * 12 * people_count
 -- Exclude temporarily absent people (tam_vang_den IS NOT NULL AND tam_vang_den >= CURRENT_DATE)
 -- Column names: ho_khau_id, dot_thu_phi_id, so_nguoi, tong_phi, so_tien_da_thu, trang_thai, period_description, ngay_thu, collected_by, ghi_chu, created_at
 -- trang_thai: CHUA_NOP (chưa nộp đủ) hoặc DA_NOP (đã nộp đủ)
+-- NOTE: so_nguoi and tong_phi are now DYNAMICALLY CALCULATED using subqueries
 -- ============================================================================
 
--- HK001: 3 members, full payment (3 * 6000 * 12 = 216,000)
-INSERT INTO thu_phi_ho_khau (ho_khau_id, dot_thu_phi_id, so_nguoi, tong_phi, so_tien_da_thu, trang_thai, period_description, ngay_thu, collected_by, ghi_chu, created_at) VALUES
-(1, 1, 3, 216000.00, 216000.00, 'DA_NOP', 'Cả năm 2025', '2025-01-15', 4, 'Đã thanh toán đủ phí vệ sinh năm 2025', NOW());
+-- Helper function to calculate eligible people count (excludes temporarily absent)
+-- For each household, count members where tam_vang_den IS NULL OR tam_vang_den < CURRENT_DATE
 
--- HK002: 4 members, full payment (4 * 6000 * 12 = 288,000)
-INSERT INTO thu_phi_ho_khau (ho_khau_id, dot_thu_phi_id, so_nguoi, tong_phi, so_tien_da_thu, trang_thai, period_description, ngay_thu, collected_by, ghi_chu, created_at) VALUES
-(2, 1, 4, 288000.00, 288000.00, 'DA_NOP', 'Cả năm 2025', '2025-01-20', 4, 'Đã thanh toán đủ phí vệ sinh năm 2025', NOW());
+-- HK001: 3 members, full payment
+-- Calculation: COUNT(members) * dinh_muc * 12 = 3 * 6000 * 12 = 216,000
+INSERT INTO thu_phi_ho_khau (ho_khau_id, dot_thu_phi_id, so_nguoi, tong_phi, so_tien_da_thu, trang_thai, period_description, ngay_thu, collected_by, ghi_chu, created_at)
+SELECT 
+    1 AS ho_khau_id,
+    1 AS dot_thu_phi_id,
+    (SELECT COUNT(*) FROM nhan_khau 
+     WHERE ho_khau_id = 1 
+     AND (tam_vang_den IS NULL OR tam_vang_den < CURRENT_DATE)) AS so_nguoi,
+    (SELECT COUNT(*) FROM nhan_khau 
+     WHERE ho_khau_id = 1 
+     AND (tam_vang_den IS NULL OR tam_vang_den < CURRENT_DATE)) * 
+    (SELECT dinh_muc FROM dot_thu_phi WHERE id = 1) * 12 AS tong_phi,
+    216000.00 AS so_tien_da_thu,
+    CASE WHEN 216000.00 >= 
+        (SELECT COUNT(*) FROM nhan_khau 
+         WHERE ho_khau_id = 1 
+         AND (tam_vang_den IS NULL OR tam_vang_den < CURRENT_DATE)) * 
+        (SELECT dinh_muc FROM dot_thu_phi WHERE id = 1) * 12
+    THEN 'DA_NOP'::VARCHAR ELSE 'CHUA_NOP'::VARCHAR END AS trang_thai,
+    'Cả năm 2025' AS period_description,
+    '2025-01-15'::DATE AS ngay_thu,
+    4 AS collected_by,
+    'Đã thanh toán đủ phí vệ sinh năm 2025' AS ghi_chu,
+    NOW() AS created_at;
 
--- HK003: 3 members, full payment (3 * 6000 * 12 = 216,000)
-INSERT INTO thu_phi_ho_khau (ho_khau_id, dot_thu_phi_id, so_nguoi, tong_phi, so_tien_da_thu, trang_thai, period_description, ngay_thu, collected_by, ghi_chu, created_at) VALUES
-(3, 1, 3, 216000.00, 216000.00, 'DA_NOP', 'Cả năm 2025', '2025-01-22', 5, 'Đã thanh toán đủ phí vệ sinh năm 2025', NOW());
+-- HK002: 4 members, full payment
+-- Calculation: 4 * 6000 * 12 = 288,000
+INSERT INTO thu_phi_ho_khau (ho_khau_id, dot_thu_phi_id, so_nguoi, tong_phi, so_tien_da_thu, trang_thai, period_description, ngay_thu, collected_by, ghi_chu, created_at)
+SELECT 
+    2 AS ho_khau_id,
+    1 AS dot_thu_phi_id,
+    (SELECT COUNT(*) FROM nhan_khau WHERE ho_khau_id = 2 AND (tam_vang_den IS NULL OR tam_vang_den < CURRENT_DATE)) AS so_nguoi,
+    (SELECT COUNT(*) FROM nhan_khau WHERE ho_khau_id = 2 AND (tam_vang_den IS NULL OR tam_vang_den < CURRENT_DATE)) * 
+    (SELECT dinh_muc FROM dot_thu_phi WHERE id = 1) * 12 AS tong_phi,
+    288000.00 AS so_tien_da_thu,
+    CASE WHEN 288000.00 >= 
+        (SELECT COUNT(*) FROM nhan_khau WHERE ho_khau_id = 2 AND (tam_vang_den IS NULL OR tam_vang_den < CURRENT_DATE)) * 
+        (SELECT dinh_muc FROM dot_thu_phi WHERE id = 1) * 12
+    THEN 'DA_NOP'::VARCHAR ELSE 'CHUA_NOP'::VARCHAR END AS trang_thai,
+    'Cả năm 2025' AS period_description,
+    '2025-01-20'::DATE AS ngay_thu,
+    4 AS collected_by,
+    'Đã thanh toán đủ phí vệ sinh năm 2025' AS ghi_chu,
+    NOW() AS created_at;
 
--- HK004: 5 members, full payment (5 * 6000 * 12 = 360,000)
-INSERT INTO thu_phi_ho_khau (ho_khau_id, dot_thu_phi_id, so_nguoi, tong_phi, so_tien_da_thu, trang_thai, period_description, ngay_thu, collected_by, ghi_chu, created_at) VALUES
-(4, 1, 5, 360000.00, 360000.00, 'DA_NOP', 'Cả năm 2025', '2025-01-25', 5, 'Đã thanh toán đủ phí vệ sinh năm 2025', NOW());
+-- HK003: 3 members, full payment
+-- Calculation: 3 * 6000 * 12 = 216,000
+INSERT INTO thu_phi_ho_khau (ho_khau_id, dot_thu_phi_id, so_nguoi, tong_phi, so_tien_da_thu, trang_thai, period_description, ngay_thu, collected_by, ghi_chu, created_at)
+SELECT 
+    3 AS ho_khau_id,
+    1 AS dot_thu_phi_id,
+    (SELECT COUNT(*) FROM nhan_khau WHERE ho_khau_id = 3 AND (tam_vang_den IS NULL OR tam_vang_den < CURRENT_DATE)) AS so_nguoi,
+    (SELECT COUNT(*) FROM nhan_khau WHERE ho_khau_id = 3 AND (tam_vang_den IS NULL OR tam_vang_den < CURRENT_DATE)) * 
+    (SELECT dinh_muc FROM dot_thu_phi WHERE id = 1) * 12 AS tong_phi,
+    216000.00 AS so_tien_da_thu,
+    CASE WHEN 216000.00 >= 
+        (SELECT COUNT(*) FROM nhan_khau WHERE ho_khau_id = 3 AND (tam_vang_den IS NULL OR tam_vang_den < CURRENT_DATE)) * 
+        (SELECT dinh_muc FROM dot_thu_phi WHERE id = 1) * 12
+    THEN 'DA_NOP'::VARCHAR ELSE 'CHUA_NOP'::VARCHAR END AS trang_thai,
+    'Cả năm 2025' AS period_description,
+    '2025-01-22'::DATE AS ngay_thu,
+    5 AS collected_by,
+    'Đã thanh toán đủ phí vệ sinh năm 2025' AS ghi_chu,
+    NOW() AS created_at;
 
--- HK005: 7 members, full payment (7 * 6000 * 12 = 504,000)
-INSERT INTO thu_phi_ho_khau (ho_khau_id, dot_thu_phi_id, so_nguoi, tong_phi, so_tien_da_thu, trang_thai, period_description, ngay_thu, collected_by, ghi_chu, created_at) VALUES
-(5, 1, 7, 504000.00, 504000.00, 'DA_NOP', 'Cả năm 2025', '2025-01-28', 5, 'Đã thanh toán đủ phí vệ sinh năm 2025', NOW());
+-- HK004: 5 members, full payment
+-- Calculation: 5 * 6000 * 12 = 360,000
+INSERT INTO thu_phi_ho_khau (ho_khau_id, dot_thu_phi_id, so_nguoi, tong_phi, so_tien_da_thu, trang_thai, period_description, ngay_thu, collected_by, ghi_chu, created_at)
+SELECT 
+    4 AS ho_khau_id,
+    1 AS dot_thu_phi_id,
+    (SELECT COUNT(*) FROM nhan_khau WHERE ho_khau_id = 4 AND (tam_vang_den IS NULL OR tam_vang_den < CURRENT_DATE)) AS so_nguoi,
+    (SELECT COUNT(*) FROM nhan_khau WHERE ho_khau_id = 4 AND (tam_vang_den IS NULL OR tam_vang_den < CURRENT_DATE)) * 
+    (SELECT dinh_muc FROM dot_thu_phi WHERE id = 1) * 12 AS tong_phi,
+    360000.00 AS so_tien_da_thu,
+    CASE WHEN 360000.00 >= 
+        (SELECT COUNT(*) FROM nhan_khau WHERE ho_khau_id = 4 AND (tam_vang_den IS NULL OR tam_vang_den < CURRENT_DATE)) * 
+        (SELECT dinh_muc FROM dot_thu_phi WHERE id = 1) * 12
+    THEN 'DA_NOP'::VARCHAR ELSE 'CHUA_NOP'::VARCHAR END AS trang_thai,
+    'Cả năm 2025' AS period_description,
+    '2025-01-25'::DATE AS ngay_thu,
+    5 AS collected_by,
+    'Đã thanh toán đủ phí vệ sinh năm 2025' AS ghi_chu,
+    NOW() AS created_at;
 
--- HK006: 1 member, full payment (1 * 6000 * 12 = 72,000)
-INSERT INTO thu_phi_ho_khau (ho_khau_id, dot_thu_phi_id, so_nguoi, tong_phi, so_tien_da_thu, trang_thai, period_description, ngay_thu, collected_by, ghi_chu, created_at) VALUES
-(6, 1, 1, 72000.00, 72000.00, 'DA_NOP', 'Cả năm 2025', '2025-01-30', 4, 'Đã thanh toán đủ phí vệ sinh năm 2025', NOW());
+-- HK005: 7 members, full payment
+-- Calculation: 7 * 6000 * 12 = 504,000
+INSERT INTO thu_phi_ho_khau (ho_khau_id, dot_thu_phi_id, so_nguoi, tong_phi, so_tien_da_thu, trang_thai, period_description, ngay_thu, collected_by, ghi_chu, created_at)
+SELECT 
+    5 AS ho_khau_id,
+    1 AS dot_thu_phi_id,
+    (SELECT COUNT(*) FROM nhan_khau WHERE ho_khau_id = 5 AND (tam_vang_den IS NULL OR tam_vang_den < CURRENT_DATE)) AS so_nguoi,
+    (SELECT COUNT(*) FROM nhan_khau WHERE ho_khau_id = 5 AND (tam_vang_den IS NULL OR tam_vang_den < CURRENT_DATE)) * 
+    (SELECT dinh_muc FROM dot_thu_phi WHERE id = 1) * 12 AS tong_phi,
+    504000.00 AS so_tien_da_thu,
+    CASE WHEN 504000.00 >= 
+        (SELECT COUNT(*) FROM nhan_khau WHERE ho_khau_id = 5 AND (tam_vang_den IS NULL OR tam_vang_den < CURRENT_DATE)) * 
+        (SELECT dinh_muc FROM dot_thu_phi WHERE id = 1) * 12
+    THEN 'DA_NOP'::VARCHAR ELSE 'CHUA_NOP'::VARCHAR END AS trang_thai,
+    'Cả năm 2025' AS period_description,
+    '2025-01-28'::DATE AS ngay_thu,
+    5 AS collected_by,
+    'Đã thanh toán đủ phí vệ sinh năm 2025' AS ghi_chu,
+    NOW() AS created_at;
 
--- HK007: 2 members, partial payment (2 * 6000 * 12 = 144,000, paid only 100,000)
-INSERT INTO thu_phi_ho_khau (ho_khau_id, dot_thu_phi_id, so_nguoi, tong_phi, so_tien_da_thu, trang_thai, period_description, ngay_thu, collected_by, ghi_chu, created_at) VALUES
-(7, 1, 2, 144000.00, 100000.00, 'CHUA_NOP', 'Cả năm 2025', '2025-01-18', 5, 'Chưa thanh toán đủ, còn thiếu 44,000 VND', NOW());
+-- HK006: 1 member, full payment
+-- Calculation: 1 * 6000 * 12 = 72,000
+INSERT INTO thu_phi_ho_khau (ho_khau_id, dot_thu_phi_id, so_nguoi, tong_phi, so_tien_da_thu, trang_thai, period_description, ngay_thu, collected_by, ghi_chu, created_at)
+SELECT 
+    6 AS ho_khau_id,
+    1 AS dot_thu_phi_id,
+    (SELECT COUNT(*) FROM nhan_khau WHERE ho_khau_id = 6 AND (tam_vang_den IS NULL OR tam_vang_den < CURRENT_DATE)) AS so_nguoi,
+    (SELECT COUNT(*) FROM nhan_khau WHERE ho_khau_id = 6 AND (tam_vang_den IS NULL OR tam_vang_den < CURRENT_DATE)) * 
+    (SELECT dinh_muc FROM dot_thu_phi WHERE id = 1) * 12 AS tong_phi,
+    72000.00 AS so_tien_da_thu,
+    CASE WHEN 72000.00 >= 
+        (SELECT COUNT(*) FROM nhan_khau WHERE ho_khau_id = 6 AND (tam_vang_den IS NULL OR tam_vang_den < CURRENT_DATE)) * 
+        (SELECT dinh_muc FROM dot_thu_phi WHERE id = 1) * 12
+    THEN 'DA_NOP'::VARCHAR ELSE 'CHUA_NOP'::VARCHAR END AS trang_thai,
+    'Cả năm 2025' AS period_description,
+    '2025-01-30'::DATE AS ngay_thu,
+    4 AS collected_by,
+    'Đã thanh toán đủ phí vệ sinh năm 2025' AS ghi_chu,
+    NOW() AS created_at;
 
--- HK008: 4 members, not paid yet (4 * 6000 * 12 = 288,000, paid 0)
-INSERT INTO thu_phi_ho_khau (ho_khau_id, dot_thu_phi_id, so_nguoi, tong_phi, so_tien_da_thu, trang_thai, period_description, ngay_thu, collected_by, ghi_chu, created_at) VALUES
-(8, 1, 4, 288000.00, 0.00, 'CHUA_NOP', 'Cả năm 2025', NULL, NULL, 'Chưa thanh toán', NOW());
+-- HK007: 2 members, partial payment
+-- Calculation: 2 * 6000 * 12 = 144,000, paid only 100,000 → CHUA_NOP
+INSERT INTO thu_phi_ho_khau (ho_khau_id, dot_thu_phi_id, so_nguoi, tong_phi, so_tien_da_thu, trang_thai, period_description, ngay_thu, collected_by, ghi_chu, created_at)
+SELECT 
+    7 AS ho_khau_id,
+    1 AS dot_thu_phi_id,
+    (SELECT COUNT(*) FROM nhan_khau WHERE ho_khau_id = 7 AND (tam_vang_den IS NULL OR tam_vang_den < CURRENT_DATE)) AS so_nguoi,
+    (SELECT COUNT(*) FROM nhan_khau WHERE ho_khau_id = 7 AND (tam_vang_den IS NULL OR tam_vang_den < CURRENT_DATE)) * 
+    (SELECT dinh_muc FROM dot_thu_phi WHERE id = 1) * 12 AS tong_phi,
+    100000.00 AS so_tien_da_thu,
+    CASE WHEN 100000.00 >= 
+        (SELECT COUNT(*) FROM nhan_khau WHERE ho_khau_id = 7 AND (tam_vang_den IS NULL OR tam_vang_den < CURRENT_DATE)) * 
+        (SELECT dinh_muc FROM dot_thu_phi WHERE id = 1) * 12
+    THEN 'DA_NOP'::VARCHAR ELSE 'CHUA_NOP'::VARCHAR END AS trang_thai,
+    'Cả năm 2025' AS period_description,
+    '2025-01-18'::DATE AS ngay_thu,
+    5 AS collected_by,
+    'Chưa thanh toán đủ, còn thiếu 44,000 VND' AS ghi_chu,
+    NOW() AS created_at;
+
+-- HK008: 4 members, not paid yet
+-- Calculation: 4 * 6000 * 12 = 288,000, paid 0 → CHUA_NOP
+INSERT INTO thu_phi_ho_khau (ho_khau_id, dot_thu_phi_id, so_nguoi, tong_phi, so_tien_da_thu, trang_thai, period_description, ngay_thu, collected_by, ghi_chu, created_at)
+SELECT 
+    8 AS ho_khau_id,
+    1 AS dot_thu_phi_id,
+    (SELECT COUNT(*) FROM nhan_khau WHERE ho_khau_id = 8 AND (tam_vang_den IS NULL OR tam_vang_den < CURRENT_DATE)) AS so_nguoi,
+    (SELECT COUNT(*) FROM nhan_khau WHERE ho_khau_id = 8 AND (tam_vang_den IS NULL OR tam_vang_den < CURRENT_DATE)) * 
+    (SELECT dinh_muc FROM dot_thu_phi WHERE id = 1) * 12 AS tong_phi,
+    0.00 AS so_tien_da_thu,
+    CASE WHEN 0.00 >= 
+        (SELECT COUNT(*) FROM nhan_khau WHERE ho_khau_id = 8 AND (tam_vang_den IS NULL OR tam_vang_den < CURRENT_DATE)) * 
+        (SELECT dinh_muc FROM dot_thu_phi WHERE id = 1) * 12
+    THEN 'DA_NOP'::VARCHAR ELSE 'CHUA_NOP'::VARCHAR END AS trang_thai,
+    'Cả năm 2025' AS period_description,
+    NULL AS ngay_thu,
+    NULL AS collected_by,
+    'Chưa thanh toán' AS ghi_chu,
+    NOW() AS created_at;
 
 -- Management fee payments (Q1 2025) - using old schema for other fee types
 INSERT INTO thu_phi_ho_khau (ho_khau_id, dot_thu_phi_id, so_nguoi, tong_phi, so_tien_da_thu, trang_thai, period_description, ngay_thu, collected_by, ghi_chu, created_at) VALUES

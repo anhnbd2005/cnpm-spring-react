@@ -2,14 +2,20 @@ package com.example.QuanLyDanCu.service;
 
 import com.example.QuanLyDanCu.dto.request.HoKhauRequestDto;
 import com.example.QuanLyDanCu.dto.response.HoKhauResponseDto;
+import com.example.QuanLyDanCu.dto.response.NhanKhauResponseDto;
 import com.example.QuanLyDanCu.entity.HoKhau;
 import com.example.QuanLyDanCu.entity.TaiKhoan;
+import com.example.QuanLyDanCu.event.ChangeOperation;
+import com.example.QuanLyDanCu.event.HoKhauChangedEvent;
 import com.example.QuanLyDanCu.repository.HoKhauRepository;
 import com.example.QuanLyDanCu.repository.TaiKhoanRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -19,10 +25,13 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class HoKhauService {
 
     private final HoKhauRepository repo;
     private final TaiKhoanRepository taiKhoanRepo;
+    private final NhanKhauService nhanKhauService;
+    private final ApplicationEventPublisher eventPublisher;
 
     // ========== DTO-based methods ==========
 
@@ -41,6 +50,7 @@ public class HoKhauService {
     }
 
     // Thêm hộ khẩu mới (DTO)
+    @Transactional
     public HoKhauResponseDto create(HoKhauRequestDto dto, Authentication auth) {
         String role = auth.getAuthorities().iterator().next().getAuthority();
         if (!role.equals("ADMIN") && !role.equals("TOTRUONG")) {
@@ -60,10 +70,16 @@ public class HoKhauService {
                 .build();
 
         HoKhau saved = repo.save(hk);
+        
+        // Publish event to trigger ThuPhiHoKhau creation
+        log.info("Publishing HoKhauChangedEvent for newly created household: {}", saved.getId());
+        eventPublisher.publishEvent(new HoKhauChangedEvent(this, saved.getId(), ChangeOperation.CREATE));
+        
         return toResponseDto(saved);
     }
 
     // Cập nhật hộ khẩu (DTO)
+    @Transactional
     public HoKhauResponseDto update(Long id, HoKhauRequestDto dto, Authentication auth) {
         String role = auth.getAuthorities().iterator().next().getAuthority();
         if (!role.equals("ADMIN") && !role.equals("TOTRUONG")) {
@@ -109,11 +125,20 @@ public class HoKhauService {
         existing.setUpdatedBy(user.getId());
 
         HoKhau saved = repo.save(existing);
+        
+        // Publish event to trigger ThuPhiHoKhau recalculation
+        log.info("Publishing HoKhauChangedEvent for updated household: {}", saved.getId());
+        eventPublisher.publishEvent(new HoKhauChangedEvent(this, saved.getId(), ChangeOperation.UPDATE));
+        
         return toResponseDto(saved);
     }
 
     // Mapper: Entity -> Response DTO
     private HoKhauResponseDto toResponseDto(HoKhau hk) {
+
+        List<NhanKhauResponseDto> listNhanKhauDto;
+
+        listNhanKhauDto = nhanKhauService.getAllByHoKhauId(hk.getId());
         return HoKhauResponseDto.builder()
                 .id(hk.getId())
                 .soHoKhau(hk.getSoHoKhau())
@@ -126,10 +151,12 @@ public class HoKhauService {
                 .updatedBy(hk.getUpdatedBy())
                                 .createdAt(hk.getCreatedAt())
                 .updatedAt(hk.getUpdatedAt())
+                .listNhanKhau(listNhanKhauDto)
                 .build();
     }
 
     // Xóa hộ khẩu
+    @Transactional
     public void delete(Long id, Authentication auth) {
         String role = auth.getAuthorities().iterator().next().getAuthority();
         if (!role.equals("ADMIN") && !role.equals("TOTRUONG")) {
@@ -138,6 +165,11 @@ public class HoKhauService {
 
         HoKhau hk = repo.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy hộ khẩu id = " + id));
+        
+        // Publish event BEFORE deletion to cascade delete ThuPhiHoKhau records
+        log.info("Publishing HoKhauChangedEvent for household deletion: {}", id);
+        eventPublisher.publishEvent(new HoKhauChangedEvent(this, id, ChangeOperation.DELETE));
+        
         repo.delete(hk);
     }
 }

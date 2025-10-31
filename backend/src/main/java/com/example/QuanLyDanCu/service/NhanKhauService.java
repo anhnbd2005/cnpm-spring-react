@@ -6,15 +6,19 @@ import com.example.QuanLyDanCu.dto.response.NhanKhauResponseDto;
 import com.example.QuanLyDanCu.entity.NhanKhau;
 import com.example.QuanLyDanCu.entity.TaiKhoan;
 import com.example.QuanLyDanCu.entity.BienDong;
+import com.example.QuanLyDanCu.event.ChangeOperation;
+import com.example.QuanLyDanCu.event.NhanKhauChangedEvent;
 import com.example.QuanLyDanCu.repository.NhanKhauRepository;
 import com.example.QuanLyDanCu.repository.TaiKhoanRepository;
 import com.example.QuanLyDanCu.repository.BienDongRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
@@ -22,11 +26,13 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class NhanKhauService {
 
     private final NhanKhauRepository nhanKhauRepo;
     private final BienDongRepository bienDongRepo;
     private final TaiKhoanRepository taiKhoanRepo;
+    private final ApplicationEventPublisher eventPublisher;
 
     // ========== DTO-based methods ==========
 
@@ -45,6 +51,7 @@ public class NhanKhauService {
     }
 
     // Thêm nhân khẩu mới (DTO)
+    @Transactional
     public NhanKhauResponseDto create(NhanKhauRequestDto dto, Authentication auth) {
         String role = auth.getAuthorities().iterator().next().getAuthority();
         if (!role.equals("ADMIN") && !role.equals("TOTRUONG")) {
@@ -76,10 +83,18 @@ public class NhanKhauService {
                 .build();
 
         NhanKhau saved = nhanKhauRepo.save(nk);
+        
+        // Publish event to trigger ThuPhiHoKhau recalculation
+        log.info("Publishing NhanKhauChangedEvent for newly created citizen: {} in household: {}", 
+                 saved.getId(), saved.getHoKhauId());
+        eventPublisher.publishEvent(new NhanKhauChangedEvent(this, saved.getId(), 
+                                     saved.getHoKhauId(), ChangeOperation.CREATE));
+        
         return toResponseDTO(saved);
     }
 
     // Cập nhật nhân khẩu (DTO)
+    @Transactional
     public NhanKhauResponseDto update(Long id, NhanKhauRequestDto dto, Authentication auth) {
         String role = auth.getAuthorities().iterator().next().getAuthority();
         if (!role.equals("ADMIN") && !role.equals("TOTRUONG")) {
@@ -160,10 +175,18 @@ public class NhanKhauService {
         existing.setUpdatedBy(user.getId());
 
         NhanKhau saved = nhanKhauRepo.save(existing);
+        
+        // Publish event to trigger ThuPhiHoKhau recalculation
+        log.info("Publishing NhanKhauChangedEvent for updated citizen: {} in household: {}", 
+                 saved.getId(), saved.getHoKhauId());
+        eventPublisher.publishEvent(new NhanKhauChangedEvent(this, saved.getId(), 
+                                     saved.getHoKhauId(), ChangeOperation.UPDATE));
+        
         return toResponseDTO(saved);
     }
 
     // Xóa nhân khẩu
+    @Transactional
     public void delete(Long id, Authentication auth) {
         String role = auth.getAuthorities().iterator().next().getAuthority();
         if (!role.equals("ADMIN") && !role.equals("TOTRUONG")) {
@@ -172,6 +195,13 @@ public class NhanKhauService {
 
         NhanKhau nk = nhanKhauRepo.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy nhân khẩu id = " + id));
+        
+        Long hoKhauId = nk.getHoKhauId();
+        
+        // Publish event BEFORE deletion to trigger ThuPhiHoKhau recalculation
+        log.info("Publishing NhanKhauChangedEvent for citizen deletion: {} in household: {}", id, hoKhauId);
+        eventPublisher.publishEvent(new NhanKhauChangedEvent(this, id, hoKhauId, ChangeOperation.DELETE));
+        
         nhanKhauRepo.delete(nk);
     }
 
@@ -266,6 +296,13 @@ public class NhanKhauService {
         bienDongRepo.save(bd);
 
         NhanKhau saved = nhanKhauRepo.save(nk);
+        
+        // Publish event because tam_vang affects fee calculation
+        log.info("Publishing NhanKhauChangedEvent for tam_vang registration: {} in household: {}", 
+                 saved.getId(), saved.getHoKhauId());
+        eventPublisher.publishEvent(new NhanKhauChangedEvent(this, saved.getId(), 
+                                     saved.getHoKhauId(), ChangeOperation.UPDATE));
+        
         return toResponseDTO(saved);
     }
 
@@ -293,6 +330,12 @@ public class NhanKhauService {
 
         bienDongRepo.save(bd);
         nhanKhauRepo.save(existing);
+        
+        // Publish event because tam_vang affects fee calculation
+        log.info("Publishing NhanKhauChangedEvent for tam_vang cancellation: {} in household: {}", 
+                 existing.getId(), existing.getHoKhauId());
+        eventPublisher.publishEvent(new NhanKhauChangedEvent(this, existing.getId(), 
+                                     existing.getHoKhauId(), ChangeOperation.UPDATE));
     }
 
     // --- KHAI TỬ ---
@@ -397,6 +440,16 @@ public class NhanKhauService {
         out.put("total", grand);
         out.put("buckets", buckets);
         return out;
+    }
+
+    // Lấy tất cả nhân khẩu theo ID hộ khẩu (DTO)
+    public List<NhanKhauResponseDto> getAllByHoKhauId(Long id) {
+        if (id == null) {
+            return java.util.Collections.emptyList();
+        }
+
+        List<NhanKhau> nhanKhaus = nhanKhauRepo.findByHoKhauId(id);
+        return nhanKhaus.stream().map(this::toResponseDTO).collect(Collectors.toList());
     }
 
     // --- helper ---
