@@ -50,3 +50,13 @@ build/
 # Docker Local Overrides
 **/docker-compose.override.yml
 **/Dockerfile.local
+
+# Personal Docker environment (exclude from team workflow)
+docker-compose.yml
+docker-compose.override.yml
+docker-compose.prod.yml
+**/Dockerfile
+**/.env.docker
+**/.env.production
+docker/
+.dockerignore
