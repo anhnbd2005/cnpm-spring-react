@@ -24,10 +24,11 @@ export default function Dashboard() {
       setLoading(true);
       
       console.log('Dashboard: Fetching stats...');
-      const [genderData, ageData, feeData] = await Promise.all([
+      const [genderData, ageData, feeData, feeCollectionData] = await Promise.all([
         citizenApi.getGenderStats(),
         citizenApi.getAgeStats(),
         feeCollectionApi.getStats(),
+        feeCollectionApi.getAll(),
       ]);
 
       console.log('Dashboard - Gender response:', genderData);
@@ -65,13 +66,22 @@ export default function Dashboard() {
       // Parse Fee Stats từ backend format:
       // { totalRecords: 1, totalCollected: 3000000, totalHouseholds: 1, paidRecords: 1, unpaidRecords: 0 }
       const rawFeeStats = feeData?.data || feeData;
+      const allCollections = feeCollectionData?.data || feeCollectionData;
       const feeCollectionStats = [];
       
-      if (rawFeeStats) {
-        const totalCollected = rawFeeStats.totalCollected || 0;
-        const totalHouseholds = rawFeeStats.totalHouseholds || 0;
-        const paidRecords = rawFeeStats.paidRecords || 0;
-        const unpaidRecords = rawFeeStats.unpaidRecords || 0;
+      if (rawFeeStats || allCollections) {
+        const totalCollected = rawFeeStats?.totalCollected || 0;
+        const totalHouseholds = rawFeeStats?.totalHouseholds || 0;
+        const paidRecords = rawFeeStats?.paidRecords || 0;
+        const unpaidRecords = rawFeeStats?.unpaidRecords || 0;
+        
+        // Tính tổng tiền cần thu từ tất cả bản ghi (từ allCollections)
+        let totalRequired = 0;
+        if (Array.isArray(allCollections)) {
+          totalRequired = allCollections.reduce((sum, record) => {
+            return sum + (record.tongPhi || 0);
+          }, 0);
+        }
         
         // Chart data: Đã thu vs Chưa thu
         feeCollectionStats.push(
@@ -81,13 +91,16 @@ export default function Dashboard() {
         
         // Stats properties
         feeCollectionStats.totalCollected = totalCollected;
+        feeCollectionStats.totalRequired = totalRequired;
         feeCollectionStats.totalHouseholds = totalHouseholds;
-        feeCollectionStats.collectionRate = totalHouseholds > 0 
-          ? Math.round((paidRecords / totalHouseholds) * 100) 
+        // Tỷ lệ thu: (tổng tiền đã thu / tổng tiền cần thu) * 100
+        feeCollectionStats.collectionRate = totalRequired > 0 
+          ? Math.round((totalCollected / totalRequired) * 100) 
           : 0;
         feeCollectionStats.householdsPaid = paidRecords;
         feeCollectionStats.householdsUnpaid = unpaidRecords;
       }
+      
 
       setStats({
         citizen: {
