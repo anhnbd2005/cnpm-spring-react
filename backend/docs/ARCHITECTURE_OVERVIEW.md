@@ -1,775 +1,561 @@
-# Architecture Overview
+# Kiến Trúc Hệ Thống - Quản Lý Dân Cư
 
-> **System Architecture Documentation - Based on Actual Implementation**  
-> Last updated: December 2024  
-> Spring Boot 3.3.5 | Java 17 | PostgreSQL
-
----
-
-## Table of Contents
-
-1. [System Overview](#1-system-overview)
-2. [Technology Stack](#2-technology-stack)
-3. [Architecture Layers](#3-architecture-layers)
-4. [Package Structure](#4-package-structure)
-5. [Security Architecture](#5-security-architecture)
-6. [Database Design](#6-database-design)
-7. [Key Workflows](#7-key-workflows)
-8. [Design Patterns](#8-design-patterns)
+> **Đồ án Công Nghệ Phần Mềm**  
+> Phiên bản: 1.0  
+> Cập nhật: Tháng 11/2024
 
 ---
 
-## 1. System Overview
+## Mục Lục
 
-QuanLyDanCu is a **Spring Boot RESTful backend** system for managing residential population and fee collection. The system follows a **layered architecture** with clear separation of concerns.
-
-### Core Features
-- **Population Management**: Citizens (Nhân Khẩu) and Households (Hộ Khẩu)
-- **Fee Collection**: Mandatory and voluntary fee management
-- **Authentication & Authorization**: JWT-based with role-based access control
-- **Population Change Tracking**: Temporary residence/absence, death registration
-
-### Architecture Principles
-- ✅ **Layered Architecture** - Controller → Service → Repository
-- ✅ **Dependency Injection** - Spring IoC container
-- ✅ **RESTful API Design** - Stateless, resource-oriented
-- ✅ **Security First** - JWT authentication + role-based authorization
-- ✅ **Data Validation** - Jakarta Bean Validation
-- ✅ **Centralized Exception Handling** - Global error management
+1. [Tổng Quan Hệ Thống](#1-tổng-quan-hệ-thống)
+2. [Công Nghệ Sử Dụng](#2-công-nghệ-sử-dụng)
+3. [Kiến Trúc Phân Tầng](#3-kiến-trúc-phân-tầng)
+4. [Sơ Đồ Kiến Trúc](#4-sơ-đồ-kiến-trúc)
+5. [Thiết Kế Cơ Sở Dữ Liệu](#5-thiết-kế-cơ-sở-dữ-liệu)
+6. [Cơ Chế Bảo Mật](#6-cơ-chế-bảo-mật)
+7. [Quy Trình Nghiệp Vụ](#7-quy-trình-nghiệp-vụ)
+8. [Các Mẫu Thiết Kế](#8-các-mẫu-thiết-kế)
 
 ---
 
-## 2. Technology Stack
+## 1. Tổng Quan Hệ Thống
 
-### Backend Framework
-- **Spring Boot 3.3.5** - Main application framework
-- **Spring Web** - REST API support
-- **Spring Data JPA** - Database access layer
-- **Spring Security** - Authentication & authorization
-- **Hibernate** - ORM implementation
+### 1.1 Giới Thiệu
 
-### Database
-- **PostgreSQL** - Production database
-- **Flyway/Liquibase** (if configured) - Database migration
+Hệ thống Quản Lý Dân Cư là một ứng dụng web RESTful được xây dựng để hỗ trợ quản lý thông tin dân cư và thu phí tại khu dân cư. Hệ thống tuân thủ kiến trúc phân tầng (layered architecture) với sự tách biệt rõ ràng giữa các thành phần.
 
-### Security
-- **JWT (JSON Web Tokens)** - Stateless authentication
-- **BCrypt** - Password hashing
-- **CORS** - Cross-origin resource sharing
+### 1.2 Mục Tiêu Thiết Kế
 
-### Validation & Utilities
-- **Jakarta Validation (javax.validation)** - Input validation
-- **Lombok** - Boilerplate code reduction
-- **Jackson** - JSON serialization/deserialization
+- **Tính mô-đun cao**: Mỗi tầng có trách nhiệm riêng biệt
+- **Dễ bảo trì**: Code được tổ chức có cấu trúc, dễ hiểu
+- **Bảo mật**: Xác thực JWT và phân quyền dựa trên vai trò
+- **Khả năng mở rộng**: Dễ dàng thêm chức năng mới
+- **Hiệu suất**: Tối ưu hóa truy vấn database và xử lý logic
 
-### Build Tool
-- **Maven** - Dependency management and build automation
+### 1.3 Đặc Điểm Chính
+
+- RESTful API với định dạng JSON
+- Xác thực không trạng thái (stateless) sử dụng JWT
+- Phân quyền dựa trên vai trò (Role-Based Access Control)
+- Tự động validation dữ liệu đầu vào
+- Xử lý lỗi tập trung
+- Hỗ trợ CORS cho frontend
 
 ---
 
-## 3. Architecture Layers
+## 2. Công Nghệ Sử Dụng
 
-### 3.1 Presentation Layer (Controllers)
+### 2.1 Backend Framework
 
-**Location:** `com.example.QuanLyDanCu.controller`
+| Công nghệ | Phiên bản | Mục đích |
+|-----------|-----------|----------|
+| Spring Boot | 3.3.5 | Framework chính cho backend |
+| Spring Web | 3.3.5 | Xây dựng RESTful API |
+| Spring Data JPA | 3.3.5 | Truy xuất cơ sở dữ liệu |
+| Spring Security | 3.3.5 | Xác thực và phân quyền |
+| Hibernate | 6.x | ORM (Object-Relational Mapping) |
 
-**Responsibility:** Handle HTTP requests, validate input, return responses
+### 2.2 Database
 
-**Components:**
-- `AuthController` - Authentication (login, register)
-- `NhanKhauController` - Citizen management
-- `HoKhauController` - Household management
-- `DotThuPhiController` - Fee period management
-- `ThuPhiHoKhauController` - Fee collection
-- `TaiKhoanController` - Account management
-- `BienDongController` - Population change tracking
+| Công nghệ | Mục đích |
+|-----------|----------|
+| PostgreSQL | Cơ sở dữ liệu quan hệ chính |
+| HikariCP | Connection pool |
 
-**Key Features:**
-- `@RestController` annotation for REST endpoints
-- `@PreAuthorize` for method-level security
-- Request validation using `@Valid` and DTO objects
-- Exception handling via `@ExceptionHandler`
+### 2.3 Bảo Mật
 
-**Example:**
-```java
-@RestController
-@RequestMapping("/api/thu-phi-ho-khau")
-@PreAuthorize("hasAnyRole('ADMIN', 'KETOAN', 'TOTRUONG')")
-public class ThuPhiHoKhauController {
-    
-    @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'KETOAN')")
-    public ResponseEntity<?> create(@Valid @RequestBody ThuPhiHoKhauRequestDto dto) {
-        // Delegate to service layer
-    }
-}
-```
+| Công nghệ | Mục đích |
+|-----------|----------|
+| JWT (JSON Web Token) | Xác thực không trạng thái |
+| BCrypt | Mã hóa mật khẩu |
+
+### 2.4 Công Cụ Phát Triển
+
+| Công nghệ | Mục đích |
+|-----------|----------|
+| Maven | Quản lý dependencies và build |
+| Lombok | Giảm boilerplate code |
+| Jackson | JSON serialization/deserialization |
+| Jakarta Validation | Validation dữ liệu đầu vào |
 
 ---
 
-### 3.2 Service Layer
+## 3. Kiến Trúc Phân Tầng
 
-**Location:** `com.example.QuanLyDanCu.service`
+Hệ thống tuân theo kiến trúc 4 tầng:
 
-**Responsibility:** Business logic, transaction management, data orchestration
+### 3.1 Presentation Layer (Tầng Trình Diễn)
 
-**Components:**
-- `AuthService` - Authentication logic
-- `HoKhauService` - Household business logic
-- `ThuPhiHoKhauService` - **Core fee collection logic** (642 lines)
-- Additional services for other entities
+**Trách nhiệm:**
+- Nhận HTTP requests từ client
+- Validation dữ liệu đầu vào cơ bản
+- Chuyển đổi request thành lời gọi service
+- Trả về HTTP responses
 
-**Key Features:**
-- `@Service` annotation
-- `@Transactional` for database transactions
-- Complex business logic implementation
-- Data validation and transformation
+**Thành phần:**
+- Controllers (AuthController, NhanKhauController, HoKhauController, v.v.)
+- DTO (Data Transfer Objects)
+- Exception Handlers
 
-**Critical Service: ThuPhiHoKhauService**
-
-This service contains the **most complex business logic** in the system:
-
-```java
-@Service
-public class ThuPhiHoKhauService {
-    
-    // Calculate active members (exclude temporarily absent)
-    private int countActiveMembersInHousehold(Long hoKhauId) {
-        List<NhanKhau> members = nhanKhauRepository.findByHoKhauId(hoKhauId);
-        int count = 0;
-        LocalDate today = LocalDate.now();
-        for (NhanKhau nk : members) {
-            if (nk.getTamVangDen() == null || nk.getTamVangDen().isBefore(today)) {
-                count++;
-            }
-        }
-        return count;
-    }
-    
-    // Calculate annual fee: dinhMuc × 12 × memberCount
-    private BigDecimal calculateAnnualFee(int dinhMuc, int numberOfPeople) {
-        return BigDecimal.valueOf(dinhMuc)
-            .multiply(BigDecimal.valueOf(12))
-            .multiply(BigDecimal.valueOf(numberOfPeople));
-    }
-    
-    // Validate payment date is within fee period
-    private void validatePaymentDate(LocalDate ngayThu, DotThuPhi dotThuPhi) {
-        if (ngayThu != null) {
-            if (ngayThu.isBefore(dotThuPhi.getNgayBatDau())) {
-                throw new RuntimeException("Chưa bắt đầu...");
-            }
-            if (ngayThu.isAfter(dotThuPhi.getNgayKetThuc())) {
-                throw new RuntimeException("Đã kết thúc vào " + 
-                    dotThuPhi.getNgayKetThuc() + "...");
-            }
-        }
-    }
-    
-    // Calculate total paid across ALL payment records
-    private BigDecimal calculateTotalPaid(Long hoKhauId, Long dotThuPhiId) {
-        List<ThuPhiHoKhau> allRecords = 
-            repository.findByHoKhauIdAndDotThuPhiId(hoKhauId, dotThuPhiId);
-        return allRecords.stream()
-            .map(ThuPhiHoKhau::getSoTienDaThu)
-            .reduce(BigDecimal.ZERO, BigDecimal::add);
-    }
-    
-    // Determine status based on total paid
-    private String determineStatus(BigDecimal totalPaid, BigDecimal tongPhi, 
-                                   LoaiThuPhi loai) {
-        if (loai == LoaiThuPhi.TU_NGUYEN) {
-            return "KHONG_AP_DUNG";
-        }
-        return totalPaid.compareTo(tongPhi) >= 0 ? "DA_NOP" : "CHUA_NOP";
-    }
-    
-    // Update ALL related records to maintain consistency
-    private void updateAllRelatedRecordsStatus(Long hoKhauId, Long dotThuPhiId) {
-        BigDecimal totalPaid = calculateTotalPaid(hoKhauId, dotThuPhiId);
-        List<ThuPhiHoKhau> allRecords = 
-            repository.findByHoKhauIdAndDotThuPhiId(hoKhauId, dotThuPhiId);
-        
-        for (ThuPhiHoKhau record : allRecords) {
-            String newStatus = determineStatus(totalPaid, record.getTongPhi(), 
-                record.getDotThuPhi().getLoai());
-            record.setTrangThai(newStatus);
-            repository.save(record);
-        }
-    }
-}
-```
-
-**Why This Service is Critical:**
-- Handles **multiple partial payments** for same household + fee period
-- Maintains **status consistency** across all related records
-- Implements **complex member counting** (excludes temporarily absent citizens)
-- Validates **payment dates** within fee period boundaries
-- Automatically **recalculates fees** when household members change
+**Đặc điểm:**
+- Sử dụng annotation `@RestController`
+- Áp dụng `@PreAuthorize` cho phân quyền
+- Validation với `@Valid`
 
 ---
 
-### 3.3 Repository Layer
+### 3.2 Service Layer (Tầng Nghiệp Vụ)
 
-**Location:** `com.example.QuanLyDanCu.repository`
+**Trách nhiệm:**
+- Xử lý logic nghiệp vụ phức tạp
+- Điều phối giao dịch (transaction management)
+- Kết hợp dữ liệu từ nhiều repositories
+- Thực hiện các phép tính và validation phức tạp
 
-**Responsibility:** Database access, query execution
+**Thành phần:**
+- AuthService: Xử lý đăng ký, đăng nhập
+- HoKhauService: Logic quản lý hộ khẩu
+- ThuPhiHoKhauService: **Tầng nghiệp vụ phức tạp nhất** - xử lý tính toán phí, thanh toán, tự động cập nhật trạng thái
 
-**Components:**
-- `HoKhauRepository`
-- `NhanKhauRepository`
-- `DotThuPhiRepository`
-- `ThuPhiHoKhauRepository`
-- `TaiKhoanRepository`
+**Đặc điểm:**
+- Sử dụng annotation `@Service`
+- Quản lý transaction với `@Transactional`
+- Độc lập với cơ chế truyền tải (HTTP, messaging, v.v.)
 
-**Key Features:**
+---
+
+### 3.3 Repository Layer (Tầng Truy Xuất Dữ Liệu)
+
+**Trách nhiệm:**
+- Truy xuất và thao tác dữ liệu trong database
+- Cung cấp các phương thức CRUD cơ bản
+- Thực thi các truy vấn tùy chỉnh
+
+**Thành phần:**
+- HoKhauRepository
+- NhanKhauRepository
+- DotThuPhiRepository
+- ThuPhiHoKhauRepository
+- TaiKhoanRepository
+
+**Đặc điểm:**
 - Extends `JpaRepository<Entity, ID>`
-- Custom query methods using method naming conventions
-- `@Query` annotations for complex queries
-- Automatic CRUD operations
-
-**Example:**
-```java
-public interface ThuPhiHoKhauRepository extends JpaRepository<ThuPhiHoKhau, Long> {
-    List<ThuPhiHoKhau> findByHoKhauIdAndDotThuPhiId(Long hoKhauId, Long dotThuPhiId);
-    List<ThuPhiHoKhau> findByHoKhauId(Long hoKhauId);
-    List<ThuPhiHoKhau> findByDotThuPhiId(Long dotThuPhiId);
-    
-    @Query("SELECT COUNT(t) FROM ThuPhiHoKhau t WHERE t.trangThai = 'DA_NOP'")
-    long countPaidRecords();
-}
-```
+- Tự động sinh các phương thức CRUD
+- Hỗ trợ query methods và `@Query` annotation
 
 ---
 
-### 3.4 Entity Layer
+### 3.4 Domain Layer (Tầng Miền)
 
-**Location:** `com.example.QuanLyDanCu.entity`
+**Trách nhiệm:**
+- Định nghĩa cấu trúc dữ liệu
+- Mapping giữa object và database tables
+- Định nghĩa quan hệ giữa các entities
 
-**Responsibility:** Database table mapping, data model
+**Thành phần:**
+- Entity classes (HoKhau, NhanKhau, DotThuPhi, ThuPhiHoKhau, TaiKhoan)
+- Enums (Role, LoaiThuPhi)
 
-**Components:**
-- `NhanKhau` (Citizen)
-- `HoKhau` (Household)
-- `DotThuPhi` (Fee Period)
-- `ThuPhiHoKhau` (Fee Collection)
-- `TaiKhoan` (Account)
-
-**Key Features:**
-- `@Entity` annotation
-- `@Id` and `@GeneratedValue` for primary keys
-- `@ManyToOne`, `@OneToMany` for relationships
-- Lombok annotations (`@Data`, `@NoArgsConstructor`, etc.)
-
-**Critical Entity: ThuPhiHoKhau**
-
-```java
-@Entity
-@Table(name = "thu_phi_ho_khau")
-@Data
-public class ThuPhiHoKhau {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    
-    @ManyToOne
-    @JoinColumn(name = "ho_khau_id", nullable = false)
-    private HoKhau hoKhau;
-    
-    @ManyToOne
-    @JoinColumn(name = "dot_thu_phi_id", nullable = false)
-    private DotThuPhi dotThuPhi;
-    
-    @Column(name = "so_nguoi")
-    private Integer soNguoi;  // Auto-calculated
-    
-    @Column(name = "tong_phi", precision = 10, scale = 2)
-    private BigDecimal tongPhi;  // Auto-calculated
-    
-    @Column(name = "so_tien_da_thu", precision = 10, scale = 2)
-    private BigDecimal soTienDaThu;  // User input
-    
-    @Column(name = "trang_thai", length = 20)
-    private String trangThai;  // Auto-determined
-    
-    @Column(name = "ngay_thu")
-    private LocalDate ngayThu;
-    
-    @Column(name = "ghi_chu", columnDefinition = "TEXT")
-    private String ghiChu;
-    
-    @ManyToOne
-    @JoinColumn(name = "collected_by")
-    private TaiKhoan collectedBy;
-    
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
-    
-    @PrePersist
-    protected void onCreate() {
-        createdAt = LocalDateTime.now();
-    }
-}
-```
-
-**Important Fields:**
-- **soNguoi**: Calculated excluding temporarily absent citizens
-- **tongPhi**: dinhMuc × 12 × soNguoi
-- **trangThai**: Determined by comparing total paid vs tongPhi across ALL records
+**Đặc điểm:**
+- Sử dụng JPA annotations (`@Entity`, `@Table`, `@Column`)
+- Định nghĩa relationships (`@ManyToOne`, `@OneToMany`)
+- Lombok để giảm boilerplate code
 
 ---
 
-### 3.5 DTO Layer
+## 4. Sơ Đồ Kiến Trúc
 
-**Location:** DTO classes are defined within service/controller packages or separate dto package
+### 4.1 Sơ Đồ Thành Phần Tổng Quan
 
-**Responsibility:** Data transfer between layers, input validation
-
-**Key DTOs:**
-- `ThuPhiHoKhauRequestDto` - Fee collection input
-- `DotThuPhiRequestDto` - Fee period input
-- `NhanKhauRequestDto` - Citizen input
-- `HoKhauRequestDto` - Household input
-
-**Example: ThuPhiHoKhauRequestDto**
-
-```java
-@Data
-public class ThuPhiHoKhauRequestDto {
-    @NotNull(message = "Hộ khẩu không được để trống")
-    private Long hoKhauId;
+```mermaid
+graph TB
+    subgraph "Client Layer"
+        Client[React Frontend]
+    end
     
-    @NotNull(message = "Đợt thu phí không được để trống")
-    private Long dotThuPhiId;
-    
-    @NotNull(message = "Số tiền đã thu không được để trống")
-    @PositiveOrZero(message = "Số tiền phải >= 0")
-    private BigDecimal soTienDaThu;
-    
-    private LocalDate ngayThu;  // Optional, but validated if provided
-    
-    private String ghiChu;
-}
-```
-
-**Validation Annotations:**
-- `@NotNull` - Field cannot be null
-- `@NotBlank` - String cannot be empty
-- `@PositiveOrZero` - Number must be >= 0
-- `@PastOrPresent` - Date must be past or today
-
----
-
-## 4. Package Structure
-
-```
-com.example.QuanLyDanCu/
-├── QuanLyDanCuApplication.java         # Main application entry point
-├── config/
-│   └── SecurityConfig.java             # Security configuration
-├── controller/
-│   ├── AuthController.java
-│   ├── HoKhauController.java
-│   ├── NhanKhauController.java
-│   ├── DotThuPhiController.java
-│   ├── ThuPhiHoKhauController.java
-│   ├── TaiKhoanController.java
-│   └── BienDongController.java
-├── service/
-│   ├── AuthService.java
-│   ├── HoKhauService.java
-│   ├── ThuPhiHoKhauService.java        # CORE business logic (642 lines)
-│   └── ...
-├── repository/
-│   ├── HoKhauRepository.java
-│   ├── NhanKhauRepository.java
-│   ├── DotThuPhiRepository.java
-│   ├── ThuPhiHoKhauRepository.java
-│   ├── TaiKhoanRepository.java
-│   └── ...
-├── entity/
-│   ├── HoKhau.java
-│   ├── NhanKhau.java
-│   ├── DotThuPhi.java
-│   ├── ThuPhiHoKhau.java
-│   ├── TaiKhoan.java
-│   └── ...
-├── security/
-│   ├── JwtUtil.java                    # JWT token generation/validation
-│   └── JwtFilter.java                  # Request filter for JWT
-└── exception/
-    └── GlobalExceptionHandler.java     # Centralized error handling
-```
-
----
-
-## 5. Security Architecture
-
-### 5.1 Authentication Flow
-
-```
-1. User → POST /api/auth/login {username, password}
-2. AuthController → AuthService.authenticate()
-3. AuthService → Verify password with BCrypt
-4. AuthService → Generate JWT token using JwtUtil
-5. Return JWT token to user
-6. User → Include token in Authorization header for subsequent requests
-7. JwtFilter → Intercept request, validate token
-8. SecurityContext → Set authentication if valid
-9. Controller → Check @PreAuthorize for role-based access
-10. Execute request or return 403 Forbidden
-```
-
-### 5.2 SecurityConfig.java
-
-**Location:** `com.example.QuanLyDanCu.config.SecurityConfig`
-
-**Key Configuration:**
-
-```java
-@Configuration
-@EnableWebSecurity
-@EnableMethodSecurity(prePostEnabled = true)
-public class SecurityConfig {
-    
-    @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        http
-            .csrf(csrf -> csrf.disable())  // Disable CSRF for stateless API
-            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/**").permitAll()  // Public endpoints
-                .anyRequest().authenticated()  // All other endpoints require auth
-            )
-            .sessionManagement(session -> session
-                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)  // No sessions
-            )
-            .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+    subgraph "Backend System"
+        subgraph "Security"
+            JWTFilter[JWT Filter]
+            Security[Spring Security]
+        end
         
-        return http.build();
-    }
-    
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(Arrays.asList(
-            "http://localhost:3000",   // React dev server
-            "http://localhost:5173"    // Vite dev server
-        ));
-        config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(Arrays.asList("*"));
-        config.setAllowCredentials(true);
+        subgraph "Presentation Layer"
+            AuthC[Auth Controller]
+            NhanKhauC[NhanKhau Controller]
+            HoKhauC[HoKhau Controller]
+            DotThuPhiC[DotThuPhi Controller]
+            ThuPhiC[ThuPhiHoKhau Controller]
+            TaiKhoanC[TaiKhoan Controller]
+        end
         
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", config);
-        return source;
-    }
-}
+        subgraph "Service Layer"
+            AuthS[Auth Service]
+            HoKhauS[HoKhau Service]
+            ThuPhiS[ThuPhiHoKhau Service]
+        end
+        
+        subgraph "Repository Layer"
+            HoKhauR[HoKhau Repository]
+            NhanKhauR[NhanKhau Repository]
+            DotThuPhiR[DotThuPhi Repository]
+            ThuPhiR[ThuPhiHoKhau Repository]
+            TaiKhoanR[TaiKhoan Repository]
+        end
+        
+        subgraph "Domain Layer"
+            HoKhauE[HoKhau Entity]
+            NhanKhauE[NhanKhau Entity]
+            DotThuPhiE[DotThuPhi Entity]
+            ThuPhiE[ThuPhiHoKhau Entity]
+            TaiKhoanE[TaiKhoan Entity]
+        end
+    end
+    
+    subgraph "Database"
+        PostgreSQL[(PostgreSQL Database)]
+    end
+    
+    Client -->|HTTP/JSON| JWTFilter
+    JWTFilter --> Security
+    Security --> AuthC
+    Security --> NhanKhauC
+    Security --> HoKhauC
+    Security --> DotThuPhiC
+    Security --> ThuPhiC
+    Security --> TaiKhoanC
+    
+    AuthC --> AuthS
+    HoKhauC --> HoKhauS
+    ThuPhiC --> ThuPhiS
+    
+    AuthS --> TaiKhoanR
+    HoKhauS --> HoKhauR
+    HoKhauS --> NhanKhauR
+    ThuPhiS --> ThuPhiR
+    ThuPhiS --> DotThuPhiR
+    ThuPhiS --> HoKhauR
+    ThuPhiS --> NhanKhauR
+    
+    HoKhauR --> HoKhauE
+    NhanKhauR --> NhanKhauE
+    DotThuPhiR --> DotThuPhiE
+    ThuPhiR --> ThuPhiE
+    TaiKhoanR --> TaiKhoanE
+    
+    HoKhauE -.->|JPA/Hibernate| PostgreSQL
+    NhanKhauE -.->|JPA/Hibernate| PostgreSQL
+    DotThuPhiE -.->|JPA/Hibernate| PostgreSQL
+    ThuPhiE -.->|JPA/Hibernate| PostgreSQL
+    TaiKhoanE -.->|JPA/Hibernate| PostgreSQL
 ```
 
-### 5.3 JWT Implementation
+### 4.2 Luồng Xử Lý Request
 
-**JwtUtil.java:**
-```java
-@Component
-public class JwtUtil {
-    private static final String SECRET = "your-secret-key";
-    private static final long EXPIRATION = 86400000; // 24 hours
+```mermaid
+sequenceDiagram
+    participant Client
+    participant JWTFilter
+    participant Controller
+    participant Service
+    participant Repository
+    participant Database
     
-    public String generateToken(String username, String role) {
-        return Jwts.builder()
-            .setSubject(username)
-            .claim("role", role)
-            .setIssuedAt(new Date())
-            .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION))
-            .signWith(SignatureAlgorithm.HS256, SECRET)
-            .compact();
-    }
-    
-    public Claims extractClaims(String token) {
-        return Jwts.parser()
-            .setSigningKey(SECRET)
-            .parseClaimsJws(token)
-            .getBody();
-    }
-    
-    public boolean isTokenValid(String token) {
-        try {
-            extractClaims(token);
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-}
-```
-
-**JwtFilter.java:**
-```java
-@Component
-public class JwtFilter extends OncePerRequestFilter {
-    
-    @Override
-    protected void doFilterInternal(HttpServletRequest request, 
-                                   HttpServletResponse response, 
-                                   FilterChain filterChain) {
-        String header = request.getHeader("Authorization");
-        
-        if (header != null && header.startsWith("Bearer ")) {
-            String token = header.substring(7);
-            
-            if (jwtUtil.isTokenValid(token)) {
-                Claims claims = jwtUtil.extractClaims(token);
-                String username = claims.getSubject();
-                String role = claims.get("role", String.class);
-                
-                // Set authentication in SecurityContext
-                UsernamePasswordAuthenticationToken auth = 
-                    new UsernamePasswordAuthenticationToken(username, null, 
-                        Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + role)));
-                
-                SecurityContextHolder.getContext().setAuthentication(auth);
-            }
-        }
-        
-        filterChain.doFilter(request, response);
-    }
-}
-```
-
-### 5.4 Role-Based Authorization
-
-**Roles:**
-- `ADMIN` - Full system access
-- `TOTRUONG` - Population management
-- `KETOAN` - Fee management
-
-**Method-Level Security:**
-```java
-@PreAuthorize("hasAnyRole('ADMIN', 'KETOAN')")  // Only ADMIN or KETOAN
-public ResponseEntity<?> createFeeCollection(...) { }
-
-@PreAuthorize("hasRole('ADMIN')")  // Only ADMIN
-public ResponseEntity<?> deleteAccount(...) { }
-
-@PreAuthorize("hasAnyRole('ADMIN', 'TOTRUONG', 'KETOAN')")  // All roles
-public ResponseEntity<?> getAllCitizens(...) { }
+    Client->>JWTFilter: HTTP Request + JWT Token
+    JWTFilter->>JWTFilter: Validate Token
+    JWTFilter->>Controller: Forward Request
+    Controller->>Controller: Validate Input (DTO)
+    Controller->>Service: Call Business Logic
+    Service->>Service: Process Business Rules
+    Service->>Repository: Query/Update Data
+    Repository->>Database: SQL Query
+    Database-->>Repository: Result Set
+    Repository-->>Service: Entity Objects
+    Service-->>Controller: Processed Data
+    Controller-->>Client: JSON Response
 ```
 
 ---
 
-## 6. Database Design
+## 5. Thiết Kế Cơ Sở Dữ Liệu
 
-### 6.1 Entity Relationships
+### 5.1 Sơ Đồ ERD
 
-```
-TaiKhoan (Account)
-    ↓
-    1:N
-    ↓
-NhanKhau (Citizen) ←─────┐
-    ↓                    │
-    N:1                  │
-    ↓                    │
-HoKhau (Household)       │
-    ↓                    │
-    1:N                  │
-    ↓                    │
-ThuPhiHoKhau ───────────┘
-    ↓
-    N:1
-    ↓
-DotThuPhi (Fee Period)
-    ↓
-    N:1
-    ↓
-TaiKhoan (created_by)
-```
-
-### 6.2 Key Tables
-
-**ho_khau (Household)**
-```sql
-CREATE TABLE ho_khau (
-    id BIGSERIAL PRIMARY KEY,
-    so_ho_khau VARCHAR(50) UNIQUE NOT NULL,
-    ten_chu_ho VARCHAR(100) NOT NULL,
-    dia_chi_thuong_tru TEXT NOT NULL,
-    so_thanh_vien INT DEFAULT 0
-);
-```
-
-**nhan_khau (Citizen)**
-```sql
-CREATE TABLE nhan_khau (
-    id BIGSERIAL PRIMARY KEY,
-    ho_ten VARCHAR(100) NOT NULL,
-    ngay_sinh DATE NOT NULL,
-    gioi_tinh VARCHAR(10) NOT NULL,
-    dan_toc VARCHAR(50),
-    quoc_tich VARCHAR(50),
-    nghe_nghiep VARCHAR(100),
-    cmnd_cccd VARCHAR(20),
-    ngay_cap DATE,
-    noi_cap VARCHAR(100),
-    quan_he_chu_ho VARCHAR(50),
-    ghi_chu TEXT,
-    ho_khau_id BIGINT NOT NULL,
-    tam_tru_tu DATE,
-    tam_tru_den DATE,
-    tam_vang_tu DATE,
-    tam_vang_den DATE,
-    ngay_khai_tu DATE,
-    ly_do_khai_tu TEXT,
-    FOREIGN KEY (ho_khau_id) REFERENCES ho_khau(id) ON DELETE CASCADE
-);
-```
-
-**dot_thu_phi (Fee Period)**
-```sql
-CREATE TABLE dot_thu_phi (
-    id BIGSERIAL PRIMARY KEY,
-    ten_dot VARCHAR(200) NOT NULL,
-    loai VARCHAR(20) NOT NULL,  -- BAT_BUOC or TU_NGUYEN
-    ngay_bat_dau DATE NOT NULL,
-    ngay_ket_thuc DATE NOT NULL,
-    dinh_muc INT DEFAULT 0,
-    created_by BIGINT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (created_by) REFERENCES tai_khoan(id)
-);
+```mermaid
+erDiagram
+    TAI_KHOAN ||--o{ NHAN_KHAU : creates
+    TAI_KHOAN ||--o{ DOT_THU_PHI : creates
+    TAI_KHOAN ||--o{ THU_PHI_HO_KHAU : collects
+    
+    HO_KHAU ||--o{ NHAN_KHAU : contains
+    HO_KHAU ||--o{ THU_PHI_HO_KHAU : has
+    
+    DOT_THU_PHI ||--o{ THU_PHI_HO_KHAU : applies_to
+    
+    TAI_KHOAN {
+        bigint id PK
+        varchar ten_dang_nhap UK
+        varchar mat_khau
+        varchar ho_ten
+        varchar email
+        varchar role
+        timestamp created_at
+    }
+    
+    HO_KHAU {
+        bigint id PK
+        varchar so_ho_khau UK
+        varchar ten_chu_ho
+        text dia_chi_thuong_tru
+        int so_thanh_vien
+    }
+    
+    NHAN_KHAU {
+        bigint id PK
+        varchar ho_ten
+        date ngay_sinh
+        varchar gioi_tinh
+        varchar dan_toc
+        varchar quoc_tich
+        varchar nghe_nghiep
+        varchar cmnd_cccd
+        date ngay_cap
+        varchar noi_cap
+        varchar quan_he_chu_ho
+        bigint ho_khau_id FK
+        date tam_tru_tu
+        date tam_tru_den
+        date tam_vang_tu
+        date tam_vang_den
+        date ngay_khai_tu
+        text ly_do_khai_tu
+    }
+    
+    DOT_THU_PHI {
+        bigint id PK
+        varchar ten_dot
+        varchar loai
+        date ngay_bat_dau
+        date ngay_ket_thuc
+        int dinh_muc
+        bigint created_by FK
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    THU_PHI_HO_KHAU {
+        bigint id PK
+        bigint ho_khau_id FK
+        bigint dot_thu_phi_id FK
+        int so_nguoi
+        decimal tong_phi
+        decimal so_tien_da_thu
+        varchar trang_thai
+        date ngay_thu
+        text ghi_chu
+        bigint collected_by FK
+        timestamp created_at
+    }
 ```
 
-**thu_phi_ho_khau (Fee Collection)**
-```sql
-CREATE TABLE thu_phi_ho_khau (
-    id BIGSERIAL PRIMARY KEY,
-    ho_khau_id BIGINT NOT NULL,
-    dot_thu_phi_id BIGINT NOT NULL,
-    so_nguoi INT,
-    tong_phi DECIMAL(10,2),
-    so_tien_da_thu DECIMAL(10,2) NOT NULL,
-    trang_thai VARCHAR(20),
-    ngay_thu DATE,
-    ghi_chu TEXT,
-    collected_by BIGINT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (ho_khau_id) REFERENCES ho_khau(id) ON DELETE CASCADE,
-    FOREIGN KEY (dot_thu_phi_id) REFERENCES dot_thu_phi(id) ON DELETE CASCADE,
-    FOREIGN KEY (collected_by) REFERENCES tai_khoan(id)
-);
+### 5.2 Mô Tả Các Bảng Chính
+
+**tai_khoan (Tài Khoản)**
+- Lưu trữ thông tin người dùng hệ thống
+- Mật khẩu được mã hóa BCrypt
+- Role: ADMIN, TOTRUONG, KETOAN
+
+**ho_khau (Hộ Khẩu)**
+- Lưu trữ thông tin hộ gia đình
+- so_ho_khau là định danh duy nhất
+- so_thanh_vien được tự động cập nhật
+
+**nhan_khau (Nhân Khẩu)**
+- Lưu trữ thông tin công dân
+- Liên kết với ho_khau qua foreign key
+- Hỗ trợ tạm trú, tạm vắng, khai tử
+
+**dot_thu_phi (Đợt Thu Phí)**
+- Định nghĩa các kỳ thu phí
+- Phân biệt BAT_BUOC và TU_NGUYEN
+- Lưu định mức và thời gian
+
+**thu_phi_ho_khau (Thu Phí Hộ Khẩu)**
+- Ghi nhận thanh toán của từng hộ
+- Hỗ trợ thanh toán nhiều lần
+- Tự động tính toán số người và tổng phí
+
+---
+
+## 6. Cơ Chế Bảo Mật
+
+### 6.1 Quy Trình Xác Thực
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant AuthController
+    participant AuthService
+    participant Database
+    participant JwtUtil
+    
+    User->>Frontend: Nhập username/password
+    Frontend->>AuthController: POST /api/auth/login
+    AuthController->>AuthService: authenticate()
+    AuthService->>Database: Tìm user theo username
+    Database-->>AuthService: User data
+    AuthService->>AuthService: Verify password (BCrypt)
+    AuthService->>JwtUtil: Generate JWT Token
+    JwtUtil-->>AuthService: JWT Token
+    AuthService-->>AuthController: Token + User Info
+    AuthController-->>Frontend: JSON Response
+    Frontend->>Frontend: Lưu token vào localStorage
+    Frontend-->>User: Đăng nhập thành công
+```
+
+### 6.2 Quy Trình Phân Quyền
+
+```mermaid
+sequenceDiagram
+    participant Frontend
+    participant JwtFilter
+    participant SecurityContext
+    participant Controller
+    
+    Frontend->>JwtFilter: Request + Authorization Header
+    JwtFilter->>JwtFilter: Extract JWT Token
+    JwtFilter->>JwtFilter: Validate Token
+    JwtFilter->>JwtFilter: Extract username & role
+    JwtFilter->>SecurityContext: Set Authentication
+    JwtFilter->>Controller: Forward Request
+    Controller->>Controller: Check @PreAuthorize
+    alt Has Permission
+        Controller-->>Frontend: Process & Return Data
+    else No Permission
+        Controller-->>Frontend: 403 Forbidden
+    end
+```
+
+### 6.3 Cấu Hình CORS
+
+Hệ thống cho phép cross-origin requests từ:
+- `http://localhost:3000` (React dev server)
+- `http://localhost:5173` (Vite dev server)
+
+Các methods được phép: GET, POST, PUT, DELETE, OPTIONS
+
+---
+
+## 7. Quy Trình Nghiệp Vụ
+
+### 7.1 Quy Trình Thu Phí
+
+```mermaid
+flowchart TD
+    Start([Bắt đầu]) --> CreatePeriod[Admin/Kế toán tạo đợt thu phí]
+    CreatePeriod --> CheckType{Loại phí?}
+    
+    CheckType -->|BAT_BUOC| AutoCalc[Tự động tính phí cho tất cả hộ khẩu]
+    CheckType -->|TU_NGUYEN| Manual[Không tự động tính]
+    
+    AutoCalc --> CountMembers[Đếm số người đủ điều kiện]
+    CountMembers --> CalcFee[Tính phí = Định mức × 12 × Số người]
+    CalcFee --> CreateRecord[Tạo bản ghi thu phí]
+    Manual --> CreateRecord
+    
+    CreateRecord --> WaitPayment[Chờ thanh toán]
+    WaitPayment --> RecordPayment[Kế toán ghi nhận thanh toán]
+    
+    RecordPayment --> ValidateDate{Ngày thu hợp lệ?}
+    ValidateDate -->|Không| Error[Báo lỗi]
+    ValidateDate -->|Có| SavePayment[Lưu thông tin thanh toán]
+    
+    SavePayment --> CalcTotal[Tính tổng đã thu từ tất cả lần thanh toán]
+    CalcTotal --> CheckStatus{Tổng đã thu >= Tổng phí?}
+    
+    CheckStatus -->|Có| UpdatePaid[Cập nhật trạng thái: DA_NOP]
+    CheckStatus -->|Không| UpdateUnpaid[Cập nhật trạng thái: CHUA_NOP]
+    
+    UpdatePaid --> UpdateAll[Cập nhật đồng bộ tất cả bản ghi liên quan]
+    UpdateUnpaid --> UpdateAll
+    
+    UpdateAll --> End([Kết thúc])
+    Error --> End
+```
+
+### 7.2 Quy Trình Tự Động Tính Lại Phí
+
+```mermaid
+flowchart TD
+    Start([Sự kiện kích hoạt]) --> Event{Loại sự kiện?}
+    
+    Event -->|Thêm nhân khẩu| AddMember[Thêm thành viên vào hộ]
+    Event -->|Xóa nhân khẩu| RemoveMember[Xóa thành viên khỏi hộ]
+    Event -->|Thay đổi tạm vắng| ChangeTamVang[Cập nhật trạng thái tạm vắng]
+    
+    AddMember --> GetHousehold[Lấy thông tin hộ khẩu]
+    RemoveMember --> GetHousehold
+    ChangeTamVang --> GetHousehold
+    
+    GetHousehold --> GetPeriods[Lấy tất cả đợt thu phí BAT_BUOC]
+    GetPeriods --> LoopPeriods{Duyệt từng đợt}
+    
+    LoopPeriods -->|Còn đợt| CountNew[Đếm lại số người đủ điều kiện]
+    CountNew --> RecalcFee[Tính lại tổng phí]
+    RecalcFee --> UpdateRecords[Cập nhật số người và tổng phí]
+    UpdateRecords --> RecalcStatus[Tính lại trạng thái thanh toán]
+    RecalcStatus --> LoopPeriods
+    
+    LoopPeriods -->|Hết| End([Kết thúc])
 ```
 
 ---
 
-## 7. Key Workflows
+## 8. Các Mẫu Thiết Kế
 
-### 7.1 Fee Collection Workflow
+### 8.1 Layered Architecture (Kiến Trúc Phân Tầng)
 
-```
-1. ADMIN/KETOAN creates DotThuPhi (Fee Period)
-   - Specifies: tenDot, loai (BAT_BUOC/TU_NGUYEN), dates, dinhMuc
-   
-2. System auto-calculates fees for each household (for BAT_BUOC):
-   - Counts active members (excludes tamVangDen >= today)
-   - Calculates: tongPhi = dinhMuc × 12 × memberCount
-   
-3. KETOAN records payment via POST /api/thu-phi-ho-khau:
-   - Validates payment date within period range
-   - System auto-fills: soNguoi, tongPhi
-   - System calculates total paid across ALL records
-   - System determines trangThai: DA_NOP or CHUA_NOP
-   
-4. If partial payment:
-   - KETOAN records another payment (same hoKhauId + dotThuPhiId)
-   - System sums ALL payments
-   - System updates status for ALL related records
-   
-5. Automatic recalculation:
-   - When member added to household → recalculate fees
-   - When member removed → recalculate fees
-   - When tamVang status changes → recalculate fees
-```
+- Tách biệt rõ ràng: Presentation → Service → Repository → Domain
+- Dependency flow: từ trên xuống dưới
+- Mỗi tầng có trách nhiệm riêng biệt
 
-### 7.2 Authentication Workflow
+### 8.2 Dependency Injection (Tiêm Phụ Thuộc)
 
-```
-1. User registers via POST /api/auth/register
-   - Password hashed with BCrypt
-   - Account created with assigned role
-   
-2. User logs in via POST /api/auth/login
-   - System verifies password
-   - JWT token generated with username + role
-   - Token returned to client
-   
-3. Client includes token in subsequent requests:
-   Authorization: Bearer {token}
-   
-4. JwtFilter intercepts request:
-   - Validates token
-   - Extracts username and role
-   - Sets SecurityContext authentication
-   
-5. Controller checks @PreAuthorize:
-   - If role matches → execute request
-   - If role doesn't match → 403 Forbidden
-```
+- Spring IoC container quản lý các beans
+- Sử dụng `@Autowired` cho constructor injection
+- Giảm coupling giữa các components
 
----
+### 8.3 DTO Pattern (Data Transfer Object)
 
-## 8. Design Patterns
-
-### 8.1 Layered Architecture Pattern
-- Clear separation: Controller → Service → Repository
-- Each layer has single responsibility
-- Dependencies flow downward
-
-### 8.2 Dependency Injection Pattern
-- Spring IoC container manages all beans
-- `@Autowired` for dependency injection
-- Loose coupling between components
-
-### 8.3 DTO Pattern
-- Separate data transfer objects from entities
-- Validation at DTO level
-- Prevents over-fetching/under-fetching
+- Tách biệt entity và data transfer layer
+- Validation tại DTO level
+- Ngăn chặn over-fetching/under-fetching
 
 ### 8.4 Repository Pattern
-- Abstract database operations
-- JpaRepository provides CRUD operations
-- Custom queries via method naming or @Query
+
+- Abstract hóa data access logic
+- JpaRepository cung cấp CRUD operations
+- Custom queries với method naming hoặc @Query
 
 ### 8.5 Service Facade Pattern
-- Service layer encapsulates complex business logic
-- Controllers delegate to services
-- Services orchestrate multiple repository calls
+
+- Service layer đóng vai trò facade
+- Che giấu complexity của business logic
+- Điều phối nhiều repository calls
 
 ### 8.6 Filter Pattern
-- JwtFilter intercepts all requests
-- Validates authentication before reaching controllers
+
+- JwtFilter chặn mọi requests
+- Validate authentication trước khi vào controller
 - Implements OncePerRequestFilter
 
 ---
 
-## Summary
+## Kết Luận
 
-The QuanLyDanCu backend follows **Spring Boot best practices** with:
-- **Clear layered architecture** for maintainability
-- **JWT-based security** for stateless authentication
-- **Role-based authorization** for fine-grained access control
-- **Comprehensive validation** at all levels
-- **Complex business logic** in service layer (especially fee calculations)
-- **RESTful API design** for frontend integration
-
-The most **critical component** is `ThuPhiHoKhauService`, which handles:
-- Multiple partial payments
-- Status consistency across records
-- Member counting with exclusions
-- Date validation
-- Automatic recalculation triggers
+Hệ thống Quản Lý Dân Cư được xây dựng trên kiến trúc phân tầng rõ ràng, tuân thủ các nguyên tắc SOLID và các mẫu thiết kế chuẩn. Việc tách biệt các tầng giúp hệ thống dễ bảo trì, mở rộng và kiểm thử. Cơ chế bảo mật JWT kết hợp với phân quyền dựa trên vai trò đảm bảo tính an toàn của dữ liệu. Thiết kế database được tối ưu với các ràng buộc và quan hệ phù hợp, hỗ trợ tốt cho các nghiệp vụ phức tạp như tính toán phí và thanh toán nhiều lần.
 
 ---
 
-**End of Architecture Overview**
+**Hết tài liệu Kiến Trúc Hệ Thống**

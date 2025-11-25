@@ -1,982 +1,381 @@
-# API Reference Documentation
+# Tài Liệu Tham Khảo API - Hệ Thống Quản Lý Dân Cư
 
-> **Generated from actual backend implementation**  
-> Last updated: December 2024  
-> Base URL: `http://localhost:8080/api`
-
----
-
-## Table of Contents
-
-1. [Authentication APIs](#1-authentication-apis)
-2. [Nhân Khẩu (Citizen) APIs](#2-nhân-khẩu-citizen-apis)
-3. [Hộ Khẩu (Household) APIs](#3-hộ-khẩu-household-apis)
-4. [Đợt Thu Phí (Fee Period) APIs](#4-đợt-thu-phí-fee-period-apis)
-5. [Thu Phí Hộ Khẩu (Fee Collection) APIs](#5-thu-phí-hộ-khẩu-fee-collection-apis)
-6. [Tài Khoản (Account Management) APIs](#6-tài-khoản-account-management-apis)
-7. [Common Response Formats](#7-common-response-formats)
-8. [Error Handling](#8-error-handling)
+> **Đồ án Công Nghệ Phần Mềm**  
+> Phiên bản: 1.0  
+> Cập nhật: Tháng 11/2024
 
 ---
 
-## 1. Authentication APIs
+## Mục Lục
 
-### 1.1 Register New Account
+1. [Tổng Quan](#1-tổng-quan)
+2. [Xác Thực và Phân Quyền](#2-xác-thực-và-phân-quyền)
+3. [API Quản Lý Nhân Khẩu](#3-api-quản-lý-nhân-khẩu)
+4. [API Quản Lý Hộ Khẩu](#4-api-quản-lý-hộ-khẩu)
+5. [API Quản Lý Đợt Thu Phí](#5-api-quản-lý-đợt-thu-phí)
+6. [API Thu Phí Hộ Khẩu](#6-api-thu-phí-hộ-khẩu)
+7. [API Quản Lý Tài Khoản](#7-api-quản-lý-tài-khoản)
+8. [Xử Lý Lỗi và Mã Trạng Thái](#8-xử-lý-lỗi-và-mã-trạng-thái)
 
-**Endpoint:** `POST /api/auth/register`  
-**Authorization:** Public (no authentication required)  
-**Description:** Create a new user account in the system
+---
 
-**Request Body:**
-```json
-{
-  "tenDangNhap": "user123",
-  "matKhau": "SecurePassword123!",
-  "hoTen": "Nguyễn Văn A",
-  "email": "nguyenvana@example.com",
-  "role": "KETOAN"
-}
+## 1. Tổng Quan
+
+### 1.1 Thông Tin Cơ Bản
+
+**Base URL:** `http://localhost:8080/api`
+
+**Công nghệ:** RESTful API sử dụng Spring Boot 3.3.5
+
+**Định dạng dữ liệu:** JSON (UTF-8)
+
+**Xác thực:** JWT (JSON Web Token) với thời hạn 24 giờ
+
+### 1.2 Nguyên Tắc Thiết Kế
+
+Hệ thống API tuân thủ các nguyên tắc RESTful:
+- **Stateless**: Mỗi request độc lập, không lưu trữ session
+- **Resource-based**: Mỗi endpoint đại diện cho một tài nguyên
+- **HTTP Methods**: GET (truy vấn), POST (tạo mới), PUT (cập nhật), DELETE (xóa)
+- **Status Codes**: Sử dụng mã HTTP chuẩn để thông báo kết quả
+
+---
+
+## 2. Xác Thực và Phân Quyền
+
+### 2.1 Đăng Ký Tài Khoản
+
+**Endpoint:** `POST /api/auth/register`
+
+**Mô tả:** Tạo tài khoản người dùng mới trong hệ thống
+
+**Dữ liệu đầu vào:**
+
+| Trường | Kiểu | Bắt buộc | Mô tả |
+|--------|------|----------|-------|
+| tenDangNhap | String | ✓ | Tên đăng nhập (tối thiểu 3 ký tự, duy nhất) |
+| matKhau | String | ✓ | Mật khẩu (tối thiểu 6 ký tự) |
+| hoTen | String | ✓ | Họ và tên người dùng |
+| email | String | ✓ | Địa chỉ email hợp lệ |
+| role | Enum | ✓ | Vai trò: ADMIN, TOTRUONG, KETOAN |
+
+**Kết quả:**
+- **201 Created**: Đăng ký thành công
+- **400 Bad Request**: Tên đăng nhập đã tồn tại hoặc dữ liệu không hợp lệ
+
+---
+
+### 2.2 Đăng Nhập
+
+**Endpoint:** `POST /api/auth/login`
+
+**Mô tả:** Xác thực người dùng và cấp JWT token
+
+**Dữ liệu đầu vào:**
+
+| Trường | Kiểu | Mô tả |
+|--------|------|-------|
+| tenDangNhap | String | Tên đăng nhập |
+| matKhau | String | Mật khẩu |
+
+**Kết quả:**
+- **200 OK**: Đăng nhập thành công, trả về token và thông tin người dùng
+- **400 Bad Request**: Sai tên đăng nhập hoặc mật khẩu
+
+**Lưu ý:** Token nhận được phải được gửi kèm trong header `Authorization: Bearer {token}` cho các request tiếp theo.
+
+---
+
+### 2.3 Ma Trận Phân Quyền
+
+| Chức năng | ADMIN | TOTRUONG | KETOAN |
+|-----------|-------|----------|---------|
+| **Quản lý nhân khẩu** | Toàn quyền | Toàn quyền | Chỉ xem |
+| **Quản lý hộ khẩu** | Toàn quyền | Toàn quyền | Chỉ xem |
+| **Quản lý đợt thu phí** | Toàn quyền | Toàn quyền | Chỉ xem |
+| **Thu phí hộ khẩu** | Toàn quyền | Chỉ xem | Toàn quyền |
+| **Quản lý tài khoản** | Toàn quyền | Không | Không |
+
+---
+
+## 3. API Quản Lý Nhân Khẩu
+
+### 3.1 Tổng Quan Chức Năng
+
+Module nhân khẩu cung cấp các chức năng quản lý thông tin cá nhân của công dân, bao gồm:
+- Thêm, sửa, xóa, tra cứu thông tin nhân khẩu
+- Đăng ký tạm trú, tạm vắng
+- Khai tử
+- Thống kê theo giới tính, độ tuổi
+
+### 3.2 Danh Sách Endpoints
+
+| Method | Endpoint | Mô tả | Phân quyền |
+|--------|----------|-------|------------|
+| GET | `/api/nhan-khau` | Lấy danh sách tất cả nhân khẩu | ALL |
+| GET | `/api/nhan-khau/{id}` | Lấy thông tin chi tiết một nhân khẩu | ALL |
+| POST | `/api/nhan-khau` | Thêm nhân khẩu mới | ADMIN, TOTRUONG |
+| PUT | `/api/nhan-khau/{id}` | Cập nhật thông tin nhân khẩu | ADMIN, TOTRUONG |
+| DELETE | `/api/nhan-khau/{id}` | Xóa nhân khẩu | ADMIN, TOTRUONG |
+| PUT | `/api/nhan-khau/{id}/tamtru` | Đăng ký tạm trú | ADMIN, TOTRUONG |
+| DELETE | `/api/nhan-khau/{id}/tamtru` | Hủy tạm trú | ADMIN, TOTRUONG |
+| PUT | `/api/nhan-khau/{id}/tamvang` | Đăng ký tạm vắng | ADMIN, TOTRUONG |
+| DELETE | `/api/nhan-khau/{id}/tamvang` | Hủy tạm vắng | ADMIN, TOTRUONG |
+| PUT | `/api/nhan-khau/{id}/khaitu` | Khai tử | ADMIN, TOTRUONG |
+| GET | `/api/nhan-khau/search?q={keyword}` | Tìm kiếm theo tên | ALL |
+| GET | `/api/nhan-khau/stats/gender` | Thống kê theo giới tính | ALL |
+| GET | `/api/nhan-khau/stats/age` | Thống kê theo độ tuổi | ALL |
+
+### 3.3 Cấu Trúc Dữ Liệu Nhân Khẩu
+
+**Thông tin cơ bản:**
+- Họ và tên, ngày sinh, giới tính
+- Dân tộc, quốc tịch, nghề nghiệp
+- CMND/CCCD, ngày cấp, nơi cấp
+- Quan hệ với chủ hộ
+
+**Thông tin đăng ký:**
+- Tạm trú: ngày bắt đầu, ngày kết thúc, lý do
+- Tạm vắng: ngày bắt đầu, ngày kết thúc, lý do
+- Khai tử: ngày khai tử, lý do
+
+### 3.4 Quy Tắc Validation
+
+- **Họ tên, giới tính, ngày sinh, hộ khẩu**: Bắt buộc
+- **Ngày sinh**: Phải là quá khứ hoặc hiện tại
+- **Giới tính**: Nam, Nữ, hoặc Khác
+- **CMND/CCCD**: 
+  - Không bắt buộc nếu tuổi < 14
+  - Bắt buộc nếu tuổi ≥ 14
+
+---
+
+## 4. API Quản Lý Hộ Khẩu
+
+### 4.1 Tổng Quan Chức Năng
+
+Module hộ khẩu quản lý thông tin các hộ gia đình, bao gồm:
+- Thêm, sửa, xóa, tra cứu thông tin hộ khẩu
+- Quản lý danh sách thành viên trong hộ
+- Tự động cập nhật số lượng thành viên
+
+### 4.2 Danh Sách Endpoints
+
+| Method | Endpoint | Mô tả | Phân quyền |
+|--------|----------|-------|------------|
+| GET | `/api/ho-khau` | Lấy danh sách tất cả hộ khẩu | ALL |
+| GET | `/api/ho-khau/{id}` | Lấy thông tin chi tiết một hộ khẩu | ALL |
+| POST | `/api/ho-khau` | Thêm hộ khẩu mới | ADMIN, TOTRUONG |
+| PUT | `/api/ho-khau/{id}` | Cập nhật thông tin hộ khẩu | ADMIN, TOTRUONG |
+| DELETE | `/api/ho-khau/{id}` | Xóa hộ khẩu | ADMIN, TOTRUONG |
+
+### 4.3 Cấu Trúc Dữ Liệu Hộ Khẩu
+
+- Số hộ khẩu (duy nhất)
+- Tên chủ hộ
+- Địa chỉ thường trú
+- Số lượng thành viên (tự động tính)
+- Danh sách thành viên
+
+### 4.4 Quy Tắc Validation
+
+- **Số hộ khẩu**: Bắt buộc, duy nhất
+- **Tên chủ hộ**: Bắt buộc
+- **Địa chỉ thường trú**: Bắt buộc
+
+### 4.5 Hành Vi Tự Động
+
+- **Khi tạo hộ khẩu mới**: Hệ thống tự động tạo bản ghi thu phí cho đợt thu phí gần nhất
+- **Khi xóa hộ khẩu**: Tất cả nhân khẩu và bản ghi thu phí liên quan sẽ bị xóa
+
+---
+
+## 5. API Quản Lý Đợt Thu Phí
+
+### 5.1 Tổng Quan Chức Năng
+
+Module đợt thu phí quản lý các kỳ thu phí, bao gồm:
+- Tạo, sửa, xóa, tra cứu đợt thu phí
+- Phân biệt phí bắt buộc và phí tự nguyện
+- Thiết lập định mức và thời gian thu phí
+
+### 5.2 Danh Sách Endpoints
+
+| Method | Endpoint | Mô tả | Phân quyền |
+|--------|----------|-------|------------|
+| GET | `/api/dot-thu-phi` | Lấy danh sách tất cả đợt thu phí | ALL |
+| GET | `/api/dot-thu-phi/{id}` | Lấy thông tin chi tiết một đợt thu phí | ALL |
+| POST | `/api/dot-thu-phi` | Tạo đợt thu phí mới | ADMIN, KETOAN |
+| PUT | `/api/dot-thu-phi/{id}` | Cập nhật đợt thu phí | ADMIN, KETOAN |
+| DELETE | `/api/dot-thu-phi/{id}` | Xóa đợt thu phí | ADMIN, KETOAN |
+
+### 5.3 Cấu Trúc Dữ Liệu Đợt Thu Phí
+
+- Tên đợt thu phí
+- Loại phí: BAT_BUOC (bắt buộc) hoặc TU_NGUYEN (tự nguyện)
+- Ngày bắt đầu, ngày kết thúc
+- Định mức (VND/người/tháng)
+- Thông tin người tạo và thời gian tạo
+
+### 5.4 Phân Loại Phí
+
+**Phí Bắt Buộc (BAT_BUOC):**
+- Yêu cầu định mức > 0
+- Tự động tính phí cho mọi hộ khẩu
+- Tình trạng: CHUA_NOP hoặc DA_NOP
+- Tự động tính lại khi số lượng thành viên hộ thay đổi
+
+**Phí Tự Nguyện (TU_NGUYEN):**
+- Định mức mặc định = 0
+- Không tự động tính phí
+- Tình trạng: KHONG_AP_DUNG
+- Không tự động tính lại
+
+---
+
+## 6. API Thu Phí Hộ Khẩu
+
+### 6.1 Tổng Quan Chức Năng
+
+Module thu phí hộ khẩu quản lý việc ghi nhận các khoản thanh toán, bao gồm:
+- Ghi nhận thanh toán từng hộ khẩu
+- Tính toán tự động số tiền phải nộp
+- Hỗ trợ thanh toán nhiều lần
+- Thống kê tình trạng thu phí
+
+### 6.2 Danh Sách Endpoints
+
+| Method | Endpoint | Mô tả | Phân quyền |
+|--------|----------|-------|------------|
+| GET | `/api/thu-phi-ho-khau` | Lấy danh sách tất cả bản ghi thu phí | ALL |
+| GET | `/api/thu-phi-ho-khau/{id}` | Lấy thông tin chi tiết một bản ghi | ALL |
+| GET | `/api/thu-phi-ho-khau/ho-khau/{id}` | Lấy lịch sử thu phí của một hộ khẩu | ALL |
+| GET | `/api/thu-phi-ho-khau/dot-thu-phi/{id}` | Lấy danh sách thu phí của một đợt | ALL |
+| GET | `/api/thu-phi-ho-khau/calc` | Tính toán phí cho hộ khẩu | ALL |
+| GET | `/api/thu-phi-ho-khau/stats` | Thống kê tổng quan | ALL |
+| POST | `/api/thu-phi-ho-khau` | Ghi nhận thanh toán mới | ADMIN, KETOAN |
+| PUT | `/api/thu-phi-ho-khau/{id}` | Cập nhật thông tin thanh toán | ADMIN, KETOAN |
+| DELETE | `/api/thu-phi-ho-khau/{id}` | Xóa bản ghi thanh toán | ADMIN, KETOAN |
+
+### 6.3 Cấu Trúc Dữ Liệu Thu Phí
+
+- Hộ khẩu (tham chiếu)
+- Đợt thu phí (tham chiếu)
+- Số người (tự động tính)
+- Tổng phí (tự động tính)
+- Số tiền đã thu (người dùng nhập)
+- Trạng thái: CHUA_NOP, DA_NOP, KHONG_AP_DUNG
+- Ngày thu, ghi chú
+- Người thu (tự động ghi nhận)
+
+### 6.4 Công Thức Tính Phí
+
+```
+Tổng phí = Định mức × 12 tháng × Số người đủ điều kiện
 ```
 
-**Field Validation:**
-- `tenDangNhap`: Required, unique, min 3 characters
-- `matKhau`: Required, min 6 characters
-- `hoTen`: Required
-- `email`: Required, valid email format
-- `role`: Required, allowed values: `ADMIN`, `TOTRUONG`, `KETOAN`
+**Lưu ý:** Chỉ tính những người đang thường trú (không bao gồm người đang tạm vắng)
 
-**Success Response (201):**
-```json
-"Đăng ký thành công"
-```
+### 6.5 Quy Tắc Validation
 
-**Error Responses:**
-- **400 Bad Request:**
-  ```json
-  {
-    "message": "Tên đăng nhập đã tồn tại"
-  }
-  ```
+- **Hộ khẩu và đợt thu phí**: Bắt buộc
+- **Số tiền đã thu**: Bắt buộc, ≥ 0
+- **Ngày thu**: Phải nằm trong khoảng thời gian của đợt thu phí
 
----
+### 6.6 Tính Năng Thanh Toán Nhiều Lần
 
-### 1.2 Login
+Hệ thống hỗ trợ thanh toán từng phần:
+- Một hộ có thể thanh toán nhiều lần cho cùng một đợt thu phí
+- Tổng số tiền đã thu = tổng các lần thanh toán
+- Trạng thái được cập nhật đồng bộ cho tất cả bản ghi liên quan
 
-**Endpoint:** `POST /api/auth/login`  
-**Authorization:** Public  
-**Description:** Authenticate user and receive JWT token
-
-**Request Body:**
-```json
-{
-  "tenDangNhap": "user123",
-  "matKhau": "SecurePassword123!"
-}
-```
-
-**Success Response (200):**
-```json
-{
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "tenDangNhap": "user123",
-  "hoTen": "Nguyễn Văn A",
-  "role": "KETOAN"
-}
-```
-
-**Error Responses:**
-- **400 Bad Request:**
-  ```json
-  {
-    "message": "Sai tên đăng nhập hoặc mật khẩu"
-  }
-  ```
+**Ví dụ:**
+- Tổng phí: 288,000 VND
+- Lần 1: Nộp 100,000 VND → Trạng thái: CHUA_NOP
+- Lần 2: Nộp 188,000 VND → Tổng đã thu: 288,000 VND → Trạng thái: DA_NOP (cả 2 bản ghi)
 
 ---
 
-## 2. Nhân Khẩu (Citizen) APIs
+## 7. API Quản Lý Tài Khoản
 
-### 2.1 Get All Citizens
+### 7.1 Tổng Quan Chức Năng
 
-**Endpoint:** `GET /api/nhan-khau`  
-**Authorization:** `ADMIN`, `TOTRUONG`, `KETOAN`  
-**Description:** Retrieve list of all citizens
+Module tài khoản cho phép quản trị viên quản lý người dùng hệ thống.
 
-**Success Response (200):**
-```json
-[
-  {
-    "id": 1,
-    "hoTen": "Nguyễn Văn A",
-    "ngaySinh": "1990-05-15",
-    "gioiTinh": "Nam",
-    "danToc": "Kinh",
-    "quocTich": "Việt Nam",
-    "ngheNghiep": "Kỹ sư",
-    "cmndCccd": "001234567890",
-    "ngayCap": "2020-01-15",
-    "noiCap": "Công an TP. Hà Nội",
-    "quanHeChuHo": "Chủ hộ",
-    "ghiChu": null,
-    "hoKhauId": 1,
-    "soHoKhau": "HK001",
-    "diaChiThuongTru": "123 Đường ABC, Quận 1, TP.HCM",
-    "tamTruTu": null,
-    "tamTruDen": null,
-    "tamVangTu": null,
-    "tamVangDen": null,
-    "ngayKhaiTu": null,
-    "lyDoKhaiTu": null
-  }
-]
-```
+### 7.2 Danh Sách Endpoints
+
+| Method | Endpoint | Mô tả | Phân quyền |
+|--------|----------|-------|------------|
+| GET | `/api/tai-khoan` | Lấy danh sách tất cả tài khoản | ADMIN |
+| DELETE | `/api/tai-khoan/{id}` | Xóa tài khoản | ADMIN |
+
+### 7.3 Quy Tắc Xóa Tài Khoản
+
+- Không được xóa tài khoản ADMIN
+- Không được xóa tài khoản của chính mình
 
 ---
 
-### 2.2 Get Citizen by ID
+## 8. Xử Lý Lỗi và Mã Trạng Thái
 
-**Endpoint:** `GET /api/nhan-khau/{id}`  
-**Authorization:** `ADMIN`, `TOTRUONG`, `KETOAN`  
-**Path Parameter:** `id` (Long) - Citizen ID
+### 8.1 Mã Trạng Thái HTTP
 
-**Success Response (200):** Same as individual object in 2.1
+| Mã | Ý nghĩa | Khi nào sử dụng |
+|----|---------|-----------------|
+| 200 | OK | Thao tác GET, PUT, DELETE thành công |
+| 201 | Created | Tạo mới thành công (POST) |
+| 204 | No Content | Xóa thành công, không trả về dữ liệu |
+| 400 | Bad Request | Dữ liệu không hợp lệ, vi phạm quy tắc nghiệp vụ |
+| 401 | Unauthorized | Thiếu hoặc JWT token không hợp lệ |
+| 403 | Forbidden | Không có quyền thực hiện thao tác |
+| 404 | Not Found | Không tìm thấy tài nguyên |
+| 500 | Internal Server Error | Lỗi không xác định từ server |
 
-**Error Responses:**
-- **400 Bad Request:**
-  ```json
-  {
-    "message": "Không tìm thấy nhân khẩu với ID đã cho"
-  }
-  ```
+### 8.2 Định Dạng Thông Báo Lỗi
 
----
+Tất cả các lỗi được trả về theo cấu trúc JSON chuẩn:
 
-### 2.3 Create New Citizen
-
-**Endpoint:** `POST /api/nhan-khau`  
-**Authorization:** `ADMIN`, `TOTRUONG`  
-**Description:** Add new citizen to the system
-
-**Request Body:**
-```json
-{
-  "hoTen": "Nguyễn Thị B",
-  "ngaySinh": "1995-08-20",
-  "gioiTinh": "Nữ",
-  "danToc": "Kinh",
-  "quocTich": "Việt Nam",
-  "ngheNghiep": "Giáo viên",
-  "cmndCccd": "001987654321",
-  "ngayCap": "2021-06-10",
-  "noiCap": "Công an TP. Hà Nội",
-  "quanHeChuHo": "Vợ/Chồng",
-  "ghiChu": "Chuyển đến từ Hà Nội",
-  "hoKhauId": 1
-}
-```
-
-**Field Validation:**
-- `hoTen`: Required, not blank
-- `ngaySinh`: Required, must be past or present date
-- `gioiTinh`: Required, allowed values: "Nam", "Nữ", "Khác"
-- `hoKhauId`: Required, must exist
-- `cmndCccd`: Optional for age < 14, required for age >= 14
-- `ngayCap`, `noiCap`: Optional for age < 14, required for age >= 14
-
-**Business Rules:**
-- If age < 14: CMND/CCCD fields are optional
-- If age >= 14: CMND/CCCD, ngayCap, noiCap are REQUIRED
-- Age is calculated as: `YEAR(CURRENT_DATE) - YEAR(ngaySinh)`
-
-**Success Response (201):** Same as 2.2
-
-**Error Responses:**
-- **400 Bad Request:**
-  ```json
-  {
-    "message": "Dữ liệu không hợp lệ"
-  }
-  ```
-- **403 Forbidden:**
-  ```json
-  {
-    "message": "Không có quyền thực hiện thao tác"
-  }
-  ```
-
----
-
-### 2.4 Update Citizen (Partial Update)
-
-**Endpoint:** `PUT /api/nhan-khau/{id}`  
-**Authorization:** `ADMIN`, `TOTRUONG`  
-**Description:** Update citizen information - only provided fields are updated
-
-**Request Body Example:**
-```json
-{
-  "ngheNghiep": "Bác sĩ",
-  "ghiChu": "Đã chuyển công tác"
-}
-```
-
-**Success Response (200):** Updated citizen object
-
-**Error Responses:** Same as 2.3
-
----
-
-### 2.5 Delete Citizen
-
-**Endpoint:** `DELETE /api/nhan-khau/{id}`  
-**Authorization:** `ADMIN`, `TOTRUONG`
-
-**Success Response (204):** No content
-
-**Error Responses:**
-- **400 Bad Request:** Citizen not found
-- **403 Forbidden:** Insufficient permissions
-
----
-
-### 2.6 Register Temporary Residence (Tạm Trú)
-
-**Endpoint:** `PUT /api/nhan-khau/{id}/tamtru`  
-**Authorization:** `ADMIN`, `TOTRUONG`  
-**Description:** Register temporary residence for a citizen
-
-**Request Body:**
-```json
-{
-  "tu": "2025-01-01",
-  "den": "2025-06-30",
-  "lyDo": "Công tác tại TP.HCM"
-}
-```
-
-**Field Validation:**
-- `tu`: Required, start date
-- `den`: Required, end date, must be after `tu`
-- `lyDo`: Optional reason
-
-**Success Response (200):** Updated citizen object with tamTruTu and tamTruDen filled
-
----
-
-### 2.7 Cancel Temporary Residence
-
-**Endpoint:** `DELETE /api/nhan-khau/{id}/tamtru`  
-**Authorization:** `ADMIN`, `TOTRUONG`
-
-**Success Response (204):** No content
-
----
-
-### 2.8 Register Temporary Absence (Tạm Vắng)
-
-**Endpoint:** `PUT /api/nhan-khau/{id}/tamvang`  
-**Authorization:** `ADMIN`, `TOTRUONG`  
-**Description:** Register temporary absence for a citizen
-
-**Request Body:**
-```json
-{
-  "tu": "2025-02-01",
-  "den": "2025-07-31",
-  "lyDo": "Đi du học nước ngoài"
-}
-```
-
-**Success Response (200):** Updated citizen object with tamVangTu and tamVangDen filled
-
-**IMPORTANT:** Citizens with active temporary absence (tamVangDen >= CURRENT_DATE) are **excluded** from fee calculations.
-
----
-
-### 2.9 Cancel Temporary Absence
-
-**Endpoint:** `DELETE /api/nhan-khau/{id}/tamvang`  
-**Authorization:** `ADMIN`, `TOTRUONG`
-
-**Success Response (204):** No content
-
----
-
-### 2.10 Register Death (Khai Tử)
-
-**Endpoint:** `PUT /api/nhan-khau/{id}/khaitu`  
-**Authorization:** `ADMIN`, `TOTRUONG`
-
-**Request Body:**
-```json
-{
-  "lyDo": "Bệnh tật"
-}
-```
-
-**Success Response (200):** Updated citizen with ngayKhaiTu set to current date
-
----
-
-### 2.11 Search Citizens by Name
-
-**Endpoint:** `GET /api/nhan-khau/search?q={keyword}`  
-**Authorization:** `ADMIN`, `TOTRUONG`, `KETOAN`  
-**Query Parameter:** `q` - Search keyword
-
-**Example:** `GET /api/nhan-khau/search?q=Nguyen`
-
-**Success Response (200):** Array of matching citizens
-
----
-
-### 2.12 Gender Statistics
-
-**Endpoint:** `GET /api/nhan-khau/stats/gender`  
-**Authorization:** `ADMIN`, `TOTRUONG`, `KETOAN`
-
-**Success Response (200):**
-```json
-{
-  "totalCitizens": 150,
-  "male": 75,
-  "female": 73,
-  "other": 2
-}
-```
-
----
-
-### 2.13 Age Statistics
-
-**Endpoint:** `GET /api/nhan-khau/stats/age?underAge=18&retireAge=60`  
-**Authorization:** `ADMIN`, `TOTRUONG`, `KETOAN`  
-**Query Parameters:**
-- `underAge` (optional, default 16): Age threshold for children
-- `retireAge` (optional, default 60): Age threshold for retirees
-
-**Success Response (200):**
-```json
-{
-  "children": 30,
-  "workingAge": 100,
-  "retirees": 20
-}
-```
-
----
-
-## 3. Hộ Khẩu (Household) APIs
-
-### 3.1 Get All Households
-
-**Endpoint:** `GET /api/ho-khau`  
-**Authorization:** `ADMIN`, `TOTRUONG`, `KETOAN`
-
-**Success Response (200):**
-```json
-[
-  {
-    "id": 1,
-    "soHoKhau": "HK001",
-    "tenChuHo": "Nguyễn Văn A",
-    "diaChiThuongTru": "123 Đường ABC, Quận 1, TP.HCM",
-    "soThanhVien": 4,
-    "members": [...]
-  }
-]
-```
-
----
-
-### 3.2 Get Household by ID
-
-**Endpoint:** `GET /api/ho-khau/{id}`  
-**Authorization:** `ADMIN`, `TOTRUONG`, `KETOAN`
-
-**Success Response (200):** Same as individual object in 3.1
-
-**Error Responses:**
-- **404 Not Found:**
-  ```json
-  {
-    "message": "Không tìm thấy hộ khẩu"
-  }
-  ```
-
----
-
-### 3.3 Create New Household
-
-**Endpoint:** `POST /api/ho-khau`  
-**Authorization:** `ADMIN`, `TOTRUONG`
-
-**Request Body:**
-```json
-{
-  "soHoKhau": "HK002",
-  "tenChuHo": "Trần Văn B",
-  "diaChiThuongTru": "456 Đường XYZ, Quận 2, TP.HCM"
-}
-```
-
-**Field Validation:**
-- `soHoKhau`: Required, unique, not blank
-- `tenChuHo`: Required, not blank
-- `diaChiThuongTru`: Required, not blank
-
-**Success Response (201):** Created household object
-
-**Automatic Action:** System automatically creates initial ThuPhiHoKhau record for the most recent fee period
-
----
-
-### 3.4 Update Household (Partial Update)
-
-**Endpoint:** `PUT /api/ho-khau/{id}`  
-**Authorization:** `ADMIN`, `TOTRUONG`
-
-**Request Body Example:**
-```json
-{
-  "diaChiThuongTru": "789 Đường MNO, Quận 3, TP.HCM"
-}
-```
-
-**Success Response (200):** Updated household object
-
----
-
-### 3.5 Delete Household
-
-**Endpoint:** `DELETE /api/ho-khau/{id}`  
-**Authorization:** `ADMIN`, `TOTRUONG`
-
-**Success Response (204):** No content
-
-**Automatic Action:** All associated ThuPhiHoKhau records are deleted
-
----
-
-## 4. Đợt Thu Phí (Fee Period) APIs
-
-### 4.1 Get All Fee Periods
-
-**Endpoint:** `GET /api/dot-thu-phi`  
-**Authorization:** `ADMIN`, `KETOAN`, `TOTRUONG`
-
-**Success Response (200):**
-```json
-[
-  {
-    "id": 1,
-    "tenDot": "Phí quản lý tháng 1/2025",
-    "loai": "BAT_BUOC",
-    "ngayBatDau": "2025-01-01",
-    "ngayKetThuc": "2025-01-31",
-    "dinhMuc": 6000,
-    "createdBy": 1,
-    "createdAt": "2025-01-01T10:00:00",
-    "updatedAt": "2025-01-01T10:00:00"
-  }
-]
-```
-
----
-
-### 4.2 Get Fee Period by ID
-
-**Endpoint:** `GET /api/dot-thu-phi/{id}`  
-**Authorization:** `ADMIN`, `KETOAN`, `TOTRUONG`
-
-**Success Response (200):** Same as individual object in 4.1
-
-**Error Responses:**
-- **404 Not Found:**
-  ```json
-  {
-    "message": "Không tìm thấy đợt thu phí"
-  }
-  ```
-
----
-
-### 4.3 Create New Fee Period
-
-**Endpoint:** `POST /api/dot-thu-phi`  
-**Authorization:** `ADMIN`, `KETOAN`
-
-**Request Body:**
-```json
-{
-  "tenDot": "Phí quản lý tháng 2/2025",
-  "loai": "BAT_BUOC",
-  "ngayBatDau": "2025-02-01",
-  "ngayKetThuc": "2025-02-28",
-  "dinhMuc": 6000
-}
-```
-
-**Field Validation:**
-- `tenDot`: Required, not blank
-- `loai`: Required, values: `BAT_BUOC` (mandatory) or `TU_NGUYEN` (voluntary)
-- `ngayBatDau`: Required
-- `ngayKetThuc`: Required, must be >= ngayBatDau
-- `dinhMuc`: 
-  - For `BAT_BUOC`: Must be > 0
-  - For `TU_NGUYEN`: Defaults to 0
-
-**Business Rules:**
-- **BAT_BUOC (Mandatory Fee):**
-  - Requires positive dinhMuc
-  - Fee calculation: dinhMuc × 12 × memberCount
-  - Status: CHUA_NOP or DA_NOP based on payment
-  - Auto-recalculates when household members change
-
-- **TU_NGUYEN (Voluntary Fee):**
-  - dinhMuc defaults to 0
-  - No automatic calculation
-  - Status: KHONG_AP_DUNG (not applicable)
-  - Does NOT auto-recalculate
-
-**Success Response (201):** Created fee period object
-
-**Error Responses:**
-- **400 Bad Request:**
-  ```json
-  {
-    "message": "Dữ liệu không hợp lệ"
-  }
-  ```
-- **403 Forbidden:**
-  ```json
-  {
-    "message": "Không có quyền truy cập"
-  }
-  ```
-
----
-
-### 4.4 Update Fee Period (Partial Update)
-
-**Endpoint:** `PUT /api/dot-thu-phi/{id}`  
-**Authorization:** `ADMIN`, `KETOAN`
-
-**Request Body Example:**
-```json
-{
-  "tenDot": "Phí quản lý Q1/2025 (cập nhật)",
-  "dinhMuc": 7000
-}
-```
-
-**Success Response (200):** Updated fee period object
-
----
-
-### 4.5 Delete Fee Period
-
-**Endpoint:** `DELETE /api/dot-thu-phi/{id}`  
-**Authorization:** `ADMIN`, `KETOAN`
-
-**Success Response (200):**
-```json
-"Đã xóa đợt thu phí id = 1"
-```
-
-**Error Responses:**
-- **403 Forbidden:** Insufficient permissions
-- **404 Not Found:** Fee period not found
-
----
-
-## 5. Thu Phí Hộ Khẩu (Fee Collection) APIs
-
-### 5.1 Get All Fee Collections
-
-**Endpoint:** `GET /api/thu-phi-ho-khau`  
-**Authorization:** `ADMIN`, `KETOAN`, `TOTRUONG`
-
-**Success Response (200):**
-```json
-[
-  {
-    "id": 1,
-    "hoKhauId": 1,
-    "soHoKhau": "HK001",
-    "tenChuHo": "Nguyễn Văn A",
-    "dotThuPhiId": 1,
-    "tenDot": "Phí quản lý tháng 1/2025",
-    "soNguoi": 4,
-    "tongPhi": 288000,
-    "soTienDaThu": 288000,
-    "trangThai": "DA_NOP",
-    "periodDescription": "Cả năm 2025",
-    "ngayThu": "2025-01-15",
-    "ghiChu": "Đã thanh toán đủ",
-    "collectedBy": 2,
-    "createdAt": "2025-01-15T14:30:00"
-  }
-]
-```
-
-**Fee Status Values:**
-- `CHUA_NOP`: Not paid (soTienDaThu < tongPhi)
-- `DA_NOP`: Fully paid (soTienDaThu >= tongPhi)
-- `KHONG_AP_DUNG`: Not applicable (voluntary fees)
-
----
-
-### 5.2 Get Fee Collection Statistics
-
-**Endpoint:** `GET /api/thu-phi-ho-khau/stats`  
-**Authorization:** `ADMIN`, `KETOAN`, `TOTRUONG`
-
-**Success Response (200):**
-```json
-{
-  "totalRecords": 50,
-  "totalCollected": 14400000,
-  "totalHouseholds": 50,
-  "paidRecords": 35,
-  "unpaidRecords": 15
-}
-```
-
----
-
-### 5.3 Calculate Fee for Household
-
-**Endpoint:** `GET /api/thu-phi-ho-khau/calc?hoKhauId={id}&dotThuPhiId={id}`  
-**Authorization:** `ADMIN`, `KETOAN`, `TOTRUONG`  
-**Query Parameters:**
-- `hoKhauId` (required): Household ID
-- `dotThuPhiId` (required): Fee period ID
-
-**Example:** `GET /api/thu-phi-ho-khau/calc?hoKhauId=1&dotThuPhiId=1`
-
-**Success Response (200):**
-```json
-{
-  "hoKhauId": 1,
-  "soHoKhau": "HK001",
-  "tenChuHo": "Nguyễn Văn A",
-  "dotThuPhiId": 1,
-  "tenDot": "Phí quản lý tháng 1/2025",
-  "memberCount": 4,
-  "monthlyFeePerPerson": 6000,
-  "monthsPerYear": 12,
-  "totalFee": 288000,
-  "formula": "6000 * 12 * 4 = 288000"
-}
-```
-
-**Calculation Logic:**
-```
-totalFee = monthlyFeePerPerson × 12 × memberCount
-```
-
-**Member Count Rules:**
-- Includes all citizens in household
-- **EXCLUDES** citizens with active temporary absence (tamVangDen >= CURRENT_DATE)
-
-**Error Responses:**
-- **400 Bad Request:**
-  ```json
-  {
-    "message": "Không tìm thấy hộ khẩu hoặc đợt thu phí"
-  }
-  ```
-
----
-
-### 5.4 Get Fee Collection by ID
-
-**Endpoint:** `GET /api/thu-phi-ho-khau/{id}`  
-**Authorization:** `ADMIN`, `KETOAN`, `TOTRUONG`
-
-**Success Response (200):** Same as individual object in 5.1
-
-**Error Responses:**
-- **404 Not Found:**
-  ```json
-  {
-    "message": "Không tìm thấy thu phí id = {id}"
-  }
-  ```
-
----
-
-### 5.5 Get Fee Collections by Household
-
-**Endpoint:** `GET /api/thu-phi-ho-khau/ho-khau/{hoKhauId}`  
-**Authorization:** `ADMIN`, `KETOAN`, `TOTRUONG`
-
-**Success Response (200):** Array of fee collection records for the household
-
----
-
-### 5.6 Get Fee Collections by Fee Period
-
-**Endpoint:** `GET /api/thu-phi-ho-khau/dot-thu-phi/{dotThuPhiId}`  
-**Authorization:** `ADMIN`, `KETOAN`, `TOTRUONG`
-
-**Success Response (200):** Array of fee collection records for the period
-
----
-
-### 5.7 Create New Fee Collection
-
-**Endpoint:** `POST /api/thu-phi-ho-khau`  
-**Authorization:** `ADMIN`, `KETOAN`  
-**Description:** Record a new fee payment for a household
-
-**Request Body:**
-```json
-{
-  "hoKhauId": 1,
-  "dotThuPhiId": 1,
-  "soTienDaThu": 288000,
-  "ngayThu": "2025-01-15",
-  "ghiChu": "Thanh toán đầy đủ một lần"
-}
-```
-
-**Field Validation:**
-- `hoKhauId`: Required, must exist
-- `dotThuPhiId`: Required, must exist
-- `soTienDaThu`: Required, must be >= 0
-- `ngayThu`: Optional, but if provided must be within fee period range
-- `ghiChu`: Optional
-
-**Critical Business Rules:**
-
-1. **Payment Date Validation:**
-   - `ngayThu` must be >= `dotThuPhi.ngayBatDau`
-   - `ngayThu` must be <= `dotThuPhi.ngayKetThuc`
-   
-2. **Automatic Calculations:**
-   - `soNguoi`: Auto-calculated (excludes temporarily absent citizens)
-   - `tongPhi`: Auto-calculated = dinhMuc × 12 × soNguoi
-   - `trangThai`: Auto-determined based on total paid across ALL payments
-
-3. **Multiple Payment Support:**
-   - System supports partial payments
-   - Status is determined by **SUM of ALL payments** for same hoKhauId + dotThuPhiId
-   - Example: Payment 1 (100,000) + Payment 2 (188,000) = 288,000 total
-   - If tongPhi = 288,000, **BOTH records** show status DA_NOP
-
-**Success Response (201):** Created fee collection object with updated status
-
-**Error Responses:**
-- **400 Bad Request (Invalid Date Before Start):**
-  ```json
-  {
-    "message": "Đợt thu phí 'Phí tháng 1/2025' chưa bắt đầu. Ngày thu phải từ 2025-01-01 trở đi."
-  }
-  ```
-- **400 Bad Request (Invalid Date After End):**
-  ```json
-  {
-    "message": "Đợt thu phí 'Phí tháng 1/2025' đã kết thúc vào 2025-01-31. Không thể ghi nhận thanh toán sau ngày này."
-  }
-  ```
-- **400 Bad Request (Not Found):**
-  ```json
-  {
-    "message": "Không tìm thấy hộ khẩu id = {id}"
-  }
-  ```
-- **403 Forbidden:**
-  ```json
-  {
-    "message": "Không có quyền truy cập (chỉ ADMIN hoặc KETOAN)"
-  }
-  ```
-
----
-
-### 5.8 Update Fee Collection
-
-**Endpoint:** `PUT /api/thu-phi-ho-khau/{id}`  
-**Authorization:** `ADMIN`, `KETOAN`
-
-**Request Body:**
-```json
-{
-  "soTienDaThu": 300000,
-  "ngayThu": "2025-01-20",
-  "ghiChu": "Cập nhật số tiền"
-}
-```
-
-**Business Rules:** Same validation and automatic calculation as 5.7
-
-**Success Response (200):** Updated fee collection object
-
-**IMPORTANT:** When updating payment amount, system recalculates status for **ALL related records** (same hoKhauId + dotThuPhiId) to ensure consistency.
-
----
-
-### 5.9 Delete Fee Collection
-
-**Endpoint:** `DELETE /api/thu-phi-ho-khau/{id}`  
-**Authorization:** `ADMIN`, `KETOAN`
-
-**Success Response (200):**
-```json
-"Đã xóa thu phí id = 1"
-```
-
----
-
-## 6. Tài Khoản (Account Management) APIs
-
-### 6.1 Get All Accounts
-
-**Endpoint:** `GET /api/tai-khoan`  
-**Authorization:** `ADMIN` only
-
-**Success Response (200):**
-```json
-[
-  {
-    "id": 1,
-    "tenDangNhap": "admin",
-    "hoTen": "Administrator",
-    "email": "admin@example.com",
-    "role": "ADMIN",
-    "createdAt": "2025-01-01T00:00:00"
-  }
-]
-```
-
----
-
-### 6.2 Delete Account
-
-**Endpoint:** `DELETE /api/tai-khoan/{id}`  
-**Authorization:** `ADMIN` only
-
-**Business Rules:**
-- Cannot delete ADMIN accounts
-- Cannot delete your own account
-
-**Success Response (200):**
-```json
-"Xóa tài khoản thành công"
-```
-
-**Error Responses:**
-- **400 Bad Request:**
-  ```json
-  {
-    "message": "Không thể xóa tài khoản ADMIN hoặc chính mình"
-  }
-  ```
-- **403 Forbidden:**
-  ```json
-  {
-    "message": "Không có quyền truy cập"
-  }
-  ```
-- **404 Not Found:**
-  ```json
-  {
-    "message": "Không tìm thấy tài khoản"
-  }
-  ```
-
----
-
-## 7. Common Response Formats
-
-### Success Response Pattern
-```json
-{
-  "data": {...},
-  "message": "Operation successful"
-}
-```
-
-### Pagination (if implemented)
-```json
-{
-  "content": [...],
-  "totalElements": 100,
-  "totalPages": 10,
-  "currentPage": 0,
-  "pageSize": 10
-}
-```
-
----
-
-## 8. Error Handling
-
-### HTTP Status Codes
-
-| Code | Meaning | When |
-|------|---------|------|
-| 200 | OK | Successful GET, PUT, DELETE |
-| 201 | Created | Successful POST |
-| 204 | No Content | Successful DELETE with no response body |
-| 400 | Bad Request | Validation error, business rule violation |
-| 401 | Unauthorized | Missing or invalid JWT token |
-| 403 | Forbidden | Insufficient permissions for operation |
-| 404 | Not Found | Resource does not exist |
-| 500 | Internal Server Error | Unexpected server error |
-
-### Error Response Format
 ```json
 {
   "timestamp": "2025-01-15T10:30:00",
   "status": 400,
   "error": "Bad Request",
-  "message": "Specific error message in Vietnamese",
+  "message": "Thông báo lỗi cụ thể bằng tiếng Việt",
   "path": "/api/thu-phi-ho-khau"
 }
 ```
 
-### Common Error Messages
+### 8.3 Các Lỗi Thường Gặp
 
-**Validation Errors:**
-- "Dữ liệu không hợp lệ"
-- "Trường {fieldName} không được để trống"
-- "Giá trị phải lớn hơn 0"
+**Lỗi xác thực dữ liệu:**
+- Dữ liệu không hợp lệ
+- Trường bắt buộc không được để trống
+- Giá trị phải lớn hơn 0
 
-**Authorization Errors:**
-- "Không có quyền thực hiện thao tác"
-- "Chỉ ADMIN hoặc KETOAN mới có thể thực hiện thao tác này"
+**Lỗi phân quyền:**
+- Không có quyền thực hiện thao tác
+- Chỉ ADMIN mới có thể thực hiện
 
-**Business Rule Violations:**
-- "Ngày thu phải nằm trong khoảng thời gian đợt thu phí"
-- "Đợt thu phí đã kết thúc vào {date}"
-- "Tên đăng nhập đã tồn tại"
+**Lỗi nghiệp vụ:**
+- Ngày thu phải nằm trong khoảng thời gian đợt thu phí
+- Tên đăng nhập đã tồn tại
+- Số hộ khẩu đã tồn tại
 
-**Not Found Errors:**
-- "Không tìm thấy {resource} id = {id}"
-- "Không tìm thấy hộ khẩu/nhân khẩu/đợt thu phí"
-
----
-
-## Authentication Headers
-
-All authenticated endpoints require JWT token in header:
-```
-Authorization: Bearer {your_jwt_token}
-```
+**Lỗi không tìm thấy:**
+- Không tìm thấy tài nguyên với ID đã cho
 
 ---
 
-## Notes
+## Kết Luận
 
-1. All dates use ISO 8601 format: `yyyy-MM-dd`
-2. All timestamps use ISO 8601 format: `yyyy-MM-dd'T'HH:mm:ss`
-3. Currency amounts use BigDecimal with 2 decimal places
-4. All API responses are in JSON format
-5. Character encoding: UTF-8
+Tài liệu này cung cấp mô tả đầy đủ về các API endpoint của hệ thống Quản Lý Dân Cư. Mỗi API được thiết kế theo nguyên tắc RESTful, đảm bảo tính nhất quán, bảo mật và dễ sử dụng. Hệ thống phân quyền rõ ràng giúp đảm bảo chỉ những người dùng có thẩm quyền mới có thể thực hiện các thao tác nhạy cảm.
+
+**Lưu ý khi sử dụng:**
+- Luôn gửi kèm JWT token trong header Authorization
+- Kiểm tra mã trạng thái HTTP để xác định kết quả
+- Xử lý các trường hợp lỗi một cách thích hợp
+- Tuân thủ các quy tắc validation để tránh lỗi
 
 ---
 
-**End of API Reference**
+**Hết tài liệu API Reference**
