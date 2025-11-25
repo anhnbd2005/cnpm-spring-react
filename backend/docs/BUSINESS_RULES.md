@@ -1,414 +1,531 @@
-# Business Rules - QuanLyDanCu Backend v1.1
+# Business Rules Documentation
+
+> **Extracted from Actual Source Code**  
+> Last updated: December 2024  
+> These rules govern system behavior and are enforced in the backend
+
+---
 
 ## Table of Contents
 
-1. [Overview](#overview)
-2. [Fee Collection Business Rules](#fee-collection-business-rules)
-3. [Population Management Rules](#population-management-rules)
-4. [Authorization Rules](#authorization-rules)
-5. [Validation Rules](#validation-rules)
-6. [Data Integrity Rules](#data-integrity-rules)
+1. [Fee Collection Rules](#1-fee-collection-rules)
+2. [Citizen Management Rules](#2-citizen-management-rules)
+3. [Household Management Rules](#3-household-management-rules)
+4. [Fee Period Rules](#4-fee-period-rules)
+5. [Account Management Rules](#5-account-management-rules)
+6. [Authorization Rules](#6-authorization-rules)
 
 ---
 
-## Overview
+## 1. Fee Collection Rules
 
-This document defines the core business logic implemented in the QuanLyDanCu backend system. These rules govern how the system calculates fees, manages population data, and enforces access control.
+### 1.1 Fee Calculation Formula
 
----
+**Rule:** Annual fee is calculated based on household size and fee period rate
 
-## Fee Collection Business Rules
-
-### 1. Annual Sanitation Fee Calculation
-
-**Context:** The primary fee type is **mandatory sanitation fee** (`BAT_BUOC`), collected annually from each household.
-
-#### 1.1 Calculation Formula
-
+**Formula:**
 ```
-Annual Fee = Base Rate × 12 months × Number of Eligible People
+tongPhi = dinhMuc × 12 × soNguoi
 
 Where:
-- Base Rate (định mức): Set in fee period (e.g., 6000 VND/person/month)
-- Number of Eligible People: Household members NOT in long-term temporary absence
+- dinhMuc: Monthly fee per person (from DotThuPhi)
+- 12: Number of months in a year
+- soNguoi: Number of eligible household members
 ```
 
-#### 1.2 Example Calculation
+**Implementation:** `ThuPhiHoKhauService.calculateAnnualFee()`
 
-**Scenario:**
-- Household: HK001
-- Fee Period: "Phí vệ sinh năm 2025"
-- Base Rate: 6,000 VND/person/month
-- Household members: 4 people
-  - Person A: Permanent resident
-  - Person B: Permanent resident
-  - Person C: Temporary absence until 2024-12-31 (returned)
-  - Person D: Temporary absence until 2026-06-30 (still absent)
-
-**Calculation:**
+**Example:**
 ```
-Eligible people = 3 (A, B, C)  // D is excluded (tamVangDen >= today)
-Annual fee = 6,000 × 12 × 3 = 216,000 VND
+Household: HK001
+Fee Period: "Phí quản lý 2025"
+Monthly rate (dinhMuc): 6,000 VND
+Household members: 4 people
+
+Calculation: 6,000 × 12 × 4 = 288,000 VND
 ```
 
-**Implementation (ThuPhiHoKhauService.java):**
+---
+
+### 1.2 Active Member Counting
+
+**Rule:** Only active household members are counted for fee calculation
+
+**Exclusion Criteria:**
+- Citizens with active temporary absence (tamVangDen >= CURRENT_DATE) are **EXCLUDED**
+
+**Implementation:** `ThuPhiHoKhauService.countActiveMembersInHousehold()`
+
+**Code Logic:**
 ```java
-List<NhanKhau> allMembers = nhanKhauRepo.findByHoKhauId(hoKhauId);
-
-// Filter out people in long-term temporary absence
-long eligibleCount = allMembers.stream()
-    .filter(m -> m.getTamVangDen() == null || 
-                 m.getTamVangDen().isBefore(LocalDate.now()))
-    .count();
-
-// Calculate annual fee
-BigDecimal tongPhi = dotThuPhi.getDinhMuc()  // 6000
-    .multiply(BigDecimal.valueOf(12))         // 12 months
-    .multiply(BigDecimal.valueOf(eligibleCount)); // 3 people
-// Result: 216,000 VND
-```
-
----
-
-### 2. Temporary Absence Exclusion Rule
-
-**Rule:** Citizens registered for **long-term temporary absence** (tạm vắng) are excluded from fee calculations.
-
-#### 2.1 Eligibility Criteria
-
-A citizen is **excluded** from fee calculation if:
-```
-tamVangDen != NULL AND tamVangDen >= Current Date
-```
-
-A citizen is **included** in fee calculation if:
-```
-tamVangDen == NULL OR tamVangDen < Current Date
-```
-
-#### 2.2 Business Rationale
-
-- **Temporary residence (tạm trú):** People temporarily living in the household → **INCLUDED** in fee calculation
-- **Temporary absence (tạm vắng):** People temporarily away from household → **EXCLUDED** if absence extends beyond current date
-
-#### 2.3 Example Scenarios
-
-| Citizen | tamVangTu | tamVangDen | Current Date | Included in Fee? | Reason |
-|---------|-----------|------------|--------------|------------------|--------|
-| Nguyen Van A | NULL | NULL | 2025-10-31 | ✅ Yes | Permanent resident |
-| Tran Thi B | 2025-01-01 | 2025-06-30 | 2025-10-31 | ✅ Yes | Absence period ended |
-| Le Van C | 2025-01-01 | 2026-12-31 | 2025-10-31 | ❌ No | Still in long-term absence |
-| Pham Thi D | 2025-01-01 | NULL | 2025-10-31 | ✅ Yes | No end date = returned |
-
----
-
-### 3. Payment Status Auto-Update Rule
-
-**Rule:** Payment status (`trangThai`) is automatically calculated based on payment amount vs. required amount.
-
-#### 3.1 Status Logic
-
-```
-IF soTienDaThu >= tongPhi THEN
-    trangThai = DA_NOP (Fully paid)
-ELSE
-    trangThai = CHUA_NOP (Not paid or partially paid)
-END IF
-```
-
-#### 3.2 Example Scenarios
-
-| tongPhi (Required) | soTienDaThu (Paid) | trangThai | Display Status |
-|-------------------|-------------------|-----------|----------------|
-| 216,000 | 0 | CHUA_NOP | Chưa nộp |
-| 216,000 | 100,000 | CHUA_NOP | Nộp thiếu (46%) |
-| 216,000 | 216,000 | DA_NOP | Đã nộp đủ |
-| 216,000 | 250,000 | DA_NOP | Đã nộp thừa |
-
-#### 3.3 Implementation
-
-**On Create:**
-```java
-TrangThaiThuPhi trangThai = (dto.getSoTienDaThu()
-    .compareTo(tongPhi) >= 0) 
-    ? TrangThaiThuPhi.DA_NOP 
-    : TrangThaiThuPhi.CHUA_NOP;
-```
-
-**On Update:**
-Status is recalculated automatically when `soTienDaThu` changes.
-
----
-
-### 4. Fee Period Types
-
-#### 4.1 Mandatory Fees (BAT_BUOC)
-
-- **Examples:** Sanitation, security, building management
-- **Collection:** Annual or periodic (defined by `ngayBatDau` and `ngayKetThuc`)
-- **Enforcement:** Required for all households
-
-#### 4.2 Voluntary Contributions (TU_NGUYEN)
-
-- **Examples:** Festival funds, charity, community improvement projects
-- **Collection:** One-time or periodic
-- **Enforcement:** Optional for households
-
-#### 4.3 Period Definition
-
-```
-Fee Period = {
-    tenDot: "Phí vệ sinh năm 2025",
-    loaiPhi: "BAT_BUOC",
-    dinhMuc: 6000.00,  // VND per person per month
-    ngayBatDau: "2025-01-01",
-    ngayKetThuc: "2025-12-31"
+private int countActiveMembersInHousehold(Long hoKhauId) {
+    List<NhanKhau> members = nhanKhauRepository.findByHoKhauId(hoKhauId);
+    int count = 0;
+    LocalDate today = LocalDate.now();
+    
+    for (NhanKhau nk : members) {
+        // Exclude if still in temporary absence period
+        if (nk.getTamVangDen() == null || nk.getTamVangDen().isBefore(today)) {
+            count++;
+        }
+    }
+    return count;
 }
 ```
 
----
-
-### 5. Multiple Payments Rule
-
-**Rule:** A household can have multiple payment records for the same fee period (e.g., installment payments).
-
-#### 5.1 Example: Installment Payment
-
-**Household HK001, Fee Period 1 (216,000 VND required):**
-
-| Payment # | Date | Amount Paid | Status | Note |
-|-----------|------|-------------|--------|------|
-| 1 | 2025-01-15 | 100,000 | CHUA_NOP | Partial payment |
-| 2 | 2025-06-15 | 116,000 | DA_NOP | Final payment |
-
-**Total Paid:** 216,000 VND → Status updated to `DA_NOP`
-
-#### 5.2 Data Model Support
-
-- Each payment record is independent (`thu_phi_ho_khau` table)
-- Frontend can aggregate payments per household + period
-- Backend doesn't enforce uniqueness on `(hoKhauId, dotThuPhiId)` combination
-
----
-
-## Population Management Rules
-
-### 1. Household Member Relationship
-
-**Rule:** Each citizen (`nhan_khau`) must belong to exactly one household (`ho_khau`).
-
-#### 1.1 Relationship Structure
-
+**Example:**
 ```
-HoKhau (1) ─────< NhanKhau (N)
+Household HK001 has 4 members:
+- Member A: No temporary absence → COUNTED
+- Member B: tamVangDen = 2024-12-31 (expired) → COUNTED
+- Member C: No temporary absence → COUNTED
+- Member D: tamVangDen = 2026-06-30 (active) → EXCLUDED
 
-Constraint: nhan_khau.ho_khau_id NOT NULL REFERENCES ho_khau(id)
-Cascade: ON DELETE CASCADE (deleting household deletes all members)
+Active member count = 3
+Fee = 6,000 × 12 × 3 = 216,000 VND
 ```
 
-#### 1.2 Household Head (Chủ Hộ)
-
-- One citizen per household should have `quanHeChuHo = "Chủ hộ"`
-- Field `chuHo` in `ho_khau` table stores head's name (denormalized for quick access)
-
 ---
 
-### 2. Population Change Recording
+### 1.3 Payment Date Validation
 
-**Rule:** All significant demographic events must be recorded in `bien_dong` table.
+**Rule:** Payment date must fall within the fee period's date range
 
-#### 2.1 Change Types
+**Validation Logic:**
+- `ngayThu >= dotThuPhi.ngayBatDau`
+- `ngayThu <= dotThuPhi.ngayKetThuc`
 
-| Type | Vietnamese | When to Record |
-|------|-----------|----------------|
-| SINH | Sinh | Birth of new citizen |
-| TU_VONG | Tử vong | Death of citizen |
-| DI_CU_DI | Di cư đi | Citizen moves out permanently |
-| DI_CU_DEN | Di cư đến | Citizen moves in permanently |
-| CHUYEN_DI | Chuyển đi | Relocation within city |
-| TAM_TRU | Tạm trú | Start of temporary residence |
-| TAM_VANG | Tạm vắng | Start of temporary absence |
+**Implementation:** `ThuPhiHoKhauService.validatePaymentDate()`
 
-#### 2.2 Recording Rules
+**Error Messages (EXACT from code):**
 
-- **Each change event creates one `BienDong` record**
-- Link to citizen: `nhanKhauId`
-- Date of event: `ngayBienDong`
-- Optional note: `ghiChu`
-
----
-
-### 3. Temporary Residence/Absence Rules
-
-#### 3.1 Temporary Residence (Tạm Trú)
-
-**Purpose:** Track people temporarily living in the household (e.g., students, workers).
-
-**Fields:**
-- `tamTruTu` - Start date of temporary residence
-- `tamTruDen` - End date of temporary residence
-
-**Business Impact:**
-- **Included** in household member count
-- **Included** in fee calculation (if not temporarily absent)
-
-#### 3.2 Temporary Absence (Tạm Vắng)
-
-**Purpose:** Track people temporarily away from the household (e.g., studying abroad, working in another city).
-
-**Fields:**
-- `tamVangTu` - Start date of absence
-- `tamVangDen` - End date of absence
-
-**Business Impact:**
-- **Excluded** from fee calculation if `tamVangDen >= today`
-- Still counted as household member for statistical purposes
-
----
-
-### 4. Death Registration (Khai Tử)
-
-**Rule:** When a citizen dies:
-
-1. Create `BienDong` record with type `TU_VONG`
-2. Set `ngayBienDong` to death date
-3. Optionally: Mark citizen record (implementation-specific)
-4. **Do not delete** citizen record (maintain historical data)
-
----
-
-## Authorization Rules
-
-### 1. Role-Based Access Control (RBAC)
-
-#### 1.1 Role Hierarchy
-
+1. **Payment before period start:**
 ```
-ADMIN (Administrator)
-  ├── Full access to all operations
-  └── Can create new user accounts
-
-TOTRUONG (Neighborhood Leader)
-  ├── Manage households, citizens, population changes
-  ├── Manage fee periods
-  └── Cannot manage fee collection records
-
-KETOAN (Accountant)
-  ├── Manage fee collection records only
-  └── Cannot create households or citizens
+"Đợt thu phí '{tenDot}' chưa bắt đầu. Ngày thu phải từ {ngayBatDau} trở đi."
 ```
 
-#### 1.2 Permission Matrix
+2. **Payment after period end:**
+```
+"Đợt thu phí '{tenDot}' đã kết thúc vào {ngayKetThuc}. Không thể ghi nhận thanh toán sau ngày này."
+```
 
-| Operation | ADMIN | TOTRUONG | KETOAN |
-|-----------|-------|----------|--------|
-| **User Management** |
-| POST /api/auth/register | ✅ | ❌ | ❌ |
-| **Household Management** |
-| POST/PUT/DELETE /api/ho-khau | ✅ | ✅ | ❌ |
-| GET /api/ho-khau | ✅ | ✅ | ✅ |
-| **Citizen Management** |
-| POST/PUT/DELETE /api/nhan-khau | ✅ | ✅ | ❌ |
-| GET /api/nhan-khau | ✅ | ✅ | ✅ |
-| **Population Changes** |
-| POST/PUT/DELETE /api/bien-dong | ✅ | ✅ | ❌ |
-| GET /api/bien-dong | ✅ | ✅ | ✅ |
-| **Fee Periods** |
-| POST/PUT/DELETE /api/dot-thu-phi | ✅ | ✅ | ❌ |
-| GET /api/dot-thu-phi | ✅ | ✅ | ✅ |
-| **Fee Collection** |
-| POST/PUT/DELETE /api/thu-phi-ho-khau | ✅ | ❌ | ✅ |
-| GET /api/thu-phi-ho-khau | ✅ | ✅ | ✅ |
-
----
-
-### 2. KETOAN-Only Fee Management Rule
-
-**Rule:** Only users with role `KETOAN` can create, update, or delete fee collection records.
-
-#### 2.1 Business Rationale
-
-- **Financial Accountability:** Restricts financial operations to trained accountants
-- **Audit Trail:** Ensures all fee collections are traceable to authorized personnel
-- **Separation of Duties:** Neighborhood leaders manage people/households, accountants manage finances
-
-#### 2.2 Implementation
-
+**Code Implementation:**
 ```java
-// In ThuPhiHoKhauService
-private void checkPermission(Authentication auth) {
-    String role = auth.getAuthorities().iterator().next().getAuthority();
-    if (!role.equals("KETOAN")) {
-        throw new RuntimeException("Chỉ KETOAN mới được phép thực hiện thao tác này");
+private void validatePaymentDate(LocalDate ngayThu, DotThuPhi dotThuPhi) {
+    if (ngayThu != null) {
+        LocalDate ngayBatDau = dotThuPhi.getNgayBatDau();
+        LocalDate ngayKetThuc = dotThuPhi.getNgayKetThuc();
+        
+        if (ngayThu.isBefore(ngayBatDau)) {
+            throw new RuntimeException(String.format(
+                "Đợt thu phí '%s' chưa bắt đầu. Ngày thu phải từ %s trở đi.",
+                dotThuPhi.getTenDot(), ngayBatDau.toString()));
+        }
+        
+        if (ngayThu.isAfter(ngayKetThuc)) {
+            throw new RuntimeException(String.format(
+                "Đợt thu phí '%s' đã kết thúc vào %s. Không thể ghi nhận thanh toán sau ngày này.",
+                dotThuPhi.getTenDot(), ngayKetThuc.toString()));
+        }
     }
 }
 ```
 
-#### 2.3 Error Response
+**Example:**
+```
+Fee Period: "Phí tháng 1/2025"
+ngayBatDau: 2025-01-01
+ngayKetThuc: 2025-01-31
 
-When TOTRUONG attempts to create fee collection:
-```json
-{
-  "error": "Chỉ KETOAN mới được phép thực hiện thao tác này",
-  "status": 403
-}
+Valid payment dates: 2025-01-01 to 2025-01-31
+Invalid: 2024-12-31 → Error: "chưa bắt đầu"
+Invalid: 2025-02-01 → Error: "đã kết thúc vào 2025-01-31"
 ```
 
 ---
 
-### 3. Read-Only Access for All Roles
+### 1.4 Multiple Payment Support
 
-**Rule:** All authenticated users (ADMIN, TOTRUONG, KETOAN) can **read** all data via GET endpoints.
+**Rule:** System supports partial payments, with status determined by total paid across ALL records
 
-**Rationale:** Transparency in population and financial data for all authorized personnel.
+**Key Behavior:**
+- Multiple payment records can exist for same hoKhauId + dotThuPhiId
+- Total paid is **SUM of all soTienDaThu** for that combination
+- Status is updated for **ALL related records** to maintain consistency
 
----
+**Implementation:** 
+- `ThuPhiHoKhauService.calculateTotalPaid()`
+- `ThuPhiHoKhauService.updateAllRelatedRecordsStatus()`
 
-## Validation Rules
-
-### 1. Input Validation
-
-All request DTOs are validated using Jakarta Validation annotations.
-
-#### 1.1 Common Validation Rules
-
-| Rule | Annotation | Example |
-|------|-----------|---------|
-| Not Null | `@NotNull` | `@NotNull(message = "ID không được để trống")` |
-| Not Blank | `@NotBlank` | `@NotBlank(message = "Tên không được để trống")` |
-| Size | `@Size(min, max)` | `@Size(max = 100, message = "Tối đa 100 ký tự")` |
-| Positive | `@Positive` | `@Positive(message = "Phải lớn hơn 0")` |
-| Positive or Zero | `@PositiveOrZero` | `@PositiveOrZero(message = "Phải >= 0")` |
-
-#### 1.2 Example: ThuPhiHoKhauRequestDto
-
+**Code Logic:**
 ```java
-public class ThuPhiHoKhauRequestDto {
-    @NotNull(message = "Hộ khẩu ID không được để trống")
-    private Long hoKhauId;
-
-    @NotNull(message = "Đợt thu phí ID không được để trống")
-    private Long dotThuPhiId;
-
-    @PositiveOrZero(message = "Số tiền đã thu phải >= 0")
-    private BigDecimal soTienDaThu;
-
-    @Size(max = 100, message = "Mô tả kỳ thu không quá 100 ký tự")
-    private String periodDescription;
-
-    @NotNull(message = "Ngày thu không được để trống")
-    private LocalDate ngayThu;
+private BigDecimal calculateTotalPaid(Long hoKhauId, Long dotThuPhiId) {
+    List<ThuPhiHoKhau> allRecords = 
+        repository.findByHoKhauIdAndDotThuPhiId(hoKhauId, dotThuPhiId);
+    
+    return allRecords.stream()
+        .map(ThuPhiHoKhau::getSoTienDaThu)
+        .reduce(BigDecimal.ZERO, BigDecimal::add);
 }
+
+private void updateAllRelatedRecordsStatus(Long hoKhauId, Long dotThuPhiId) {
+    BigDecimal totalPaid = calculateTotalPaid(hoKhauId, dotThuPhiId);
+    List<ThuPhiHoKhau> allRecords = 
+        repository.findByHoKhauIdAndDotThuPhiId(hoKhauId, dotThuPhiId);
+    
+    for (ThuPhiHoKhau record : allRecords) {
+        String newStatus = determineStatus(totalPaid, record.getTongPhi(), 
+            record.getDotThuPhi().getLoai());
+        record.setTrangThai(newStatus);
+        repository.save(record);
+    }
+}
+```
+
+**Example:**
+```
+Household HK001, Fee Period "2025", Total Fee: 288,000 VND
+
+Payment 1: 100,000 VND on 2025-01-10
+- totalPaid = 100,000
+- Status = "CHUA_NOP" (100,000 < 288,000)
+
+Payment 2: 188,000 VND on 2025-01-20
+- totalPaid = 100,000 + 188,000 = 288,000
+- Status = "DA_NOP" (288,000 >= 288,000)
+- BOTH Payment 1 and Payment 2 records updated to "DA_NOP"
+
+Payment 3: 50,000 VND on 2025-01-25 (overpayment)
+- totalPaid = 288,000 + 50,000 = 338,000
+- Status = "DA_NOP" (338,000 >= 288,000)
+- ALL THREE records show "DA_NOP"
 ```
 
 ---
 
-### 2. Enum Validation
+### 1.5 Payment Status Determination
 
-**Rule:** Enum fields only accept predefined values.
+**Rule:** Status is determined by comparing total paid vs total fee
 
-#### 2.1 Fee Type Enum (LoaiThuPhi)
+**Status Values:**
+- `CHUA_NOP` (Not paid) - For mandatory fees when totalPaid < tongPhi
+- `DA_NOP` (Paid) - For mandatory fees when totalPaid >= tongPhi
+- `KHONG_AP_DUNG` (Not applicable) - For voluntary fees
 
+**Implementation:** `ThuPhiHoKhauService.determineStatus()`
+
+**Code Logic:**
+```java
+private String determineStatus(BigDecimal totalPaid, BigDecimal tongPhi, 
+                               LoaiThuPhi loai) {
+    if (loai == LoaiThuPhi.TU_NGUYEN) {
+        return "KHONG_AP_DUNG";
+    }
+    
+    return totalPaid.compareTo(tongPhi) >= 0 ? "DA_NOP" : "CHUA_NOP";
+}
+```
+
+**Decision Table:**
+
+| Fee Type | Total Paid | Total Fee | Status |
+|----------|-----------|-----------|---------|
+| BAT_BUOC | 100,000 | 288,000 | CHUA_NOP |
+| BAT_BUOC | 288,000 | 288,000 | DA_NOP |
+| BAT_BUOC | 300,000 | 288,000 | DA_NOP |
+| TU_NGUYEN | Any | Any | KHONG_AP_DUNG |
+
+---
+
+### 1.6 Automatic Fee Recalculation
+
+**Rule:** Fees are automatically recalculated when household composition changes
+
+**Triggers:**
+1. New citizen added to household
+2. Citizen removed from household
+3. Citizen's temporary absence status changes
+
+**Applies to:** Only `BAT_BUOC` (mandatory) fees
+
+**Does NOT apply to:** `TU_NGUYEN` (voluntary) fees
+
+**Implementation:** `ThuPhiHoKhauService.recalculateForHousehold()`
+
+**Code Logic:**
+```java
+public void recalculateForHousehold(Long hoKhauId) {
+    // Get all BAT_BUOC fee periods
+    List<DotThuPhi> mandatoryPeriods = dotThuPhiRepository
+        .findByLoai(LoaiThuPhi.BAT_BUOC);
+    
+    for (DotThuPhi period : mandatoryPeriods) {
+        // Get existing records
+        List<ThuPhiHoKhau> existingRecords = repository
+            .findByHoKhauIdAndDotThuPhiId(hoKhauId, period.getId());
+        
+        // Recalculate member count and total fee
+        int newMemberCount = countActiveMembersInHousehold(hoKhauId);
+        BigDecimal newTotalFee = calculateAnnualFee(period.getDinhMuc(), 
+                                                     newMemberCount);
+        
+        // Update all records
+        for (ThuPhiHoKhau record : existingRecords) {
+            record.setSoNguoi(newMemberCount);
+            record.setTongPhi(newTotalFee);
+            repository.save(record);
+        }
+        
+        // Update status based on new total fee
+        updateAllRelatedRecordsStatus(hoKhauId, period.getId());
+    }
+}
+```
+
+**Example:**
+```
+Initial state:
+- Household HK001: 4 members
+- Fee: 6,000 × 12 × 4 = 288,000 VND
+- Paid: 288,000 VND
+- Status: DA_NOP
+
+Action: Add 1 new member
+- New member count: 5
+- New fee: 6,000 × 12 × 5 = 360,000 VND
+- Total paid: 288,000 VND (unchanged)
+- New status: CHUA_NOP (288,000 < 360,000)
+```
+
+---
+
+### 1.7 Initial Fee Record Creation
+
+**Rule:** When a new household is created, initial fee records are automatically generated
+
+**Behavior:**
+- System finds the most recent fee period
+- Creates ThuPhiHoKhau record with:
+  - soTienDaThu = 0
+  - Status = CHUA_NOP (for BAT_BUOC) or KHONG_AP_DUNG (for TU_NGUYEN)
+
+**Implementation:** Called in `HoKhauService.createHoKhau()`
+
+---
+
+## 2. Citizen Management Rules
+
+### 2.1 Age-Based CCCD Validation
+
+**Rule:** CCCD (Citizen ID) requirements depend on age
+
+**Age Calculation:**
+```
+age = YEAR(CURRENT_DATE) - YEAR(ngaySinh)
+```
+
+**Validation Rules:**
+
+| Age | CCCD Required | ngayCap Required | noiCap Required |
+|-----|---------------|------------------|-----------------|
+| < 14 | Optional | Optional | Optional |
+| >= 14 | **Required** | **Required** | **Required** |
+
+**Implementation:** Applied in `NhanKhauRequestDto` validation
+
+**Code Logic:**
+```java
+@Data
+public class NhanKhauRequestDto {
+    @NotBlank
+    private String hoTen;
+    
+    @NotNull
+    @PastOrPresent
+    private LocalDate ngaySinh;
+    
+    @NotBlank
+    private String gioiTinh;
+    
+    @NotNull
+    private Long hoKhauId;
+    
+    // Age-dependent validation
+    private String cmndCccd;  // Required if age >= 14
+    private LocalDate ngayCap;  // Required if age >= 14
+    private String noiCap;  // Required if age >= 14
+}
+```
+
+**Example:**
+```
+Citizen A: Born 2015-05-10 (age 9)
+- CCCD: Optional
+- Can create without CCCD
+
+Citizen B: Born 2005-05-10 (age 19)
+- CCCD: REQUIRED
+- ngayCap: REQUIRED
+- noiCap: REQUIRED
+- Cannot create without these fields
+```
+
+---
+
+### 2.2 Gender Values
+
+**Rule:** Gender must be one of predefined values
+
+**Allowed Values:**
+- `Nam` (Male)
+- `Nữ` (Female)
+- `Khác` (Other)
+
+**Implementation:** Validated in DTO and stored in database
+
+---
+
+### 2.3 Birth Date Validation
+
+**Rule:** Birth date must be in the past or today
+
+**Validation:** `@PastOrPresent` annotation on `ngaySinh` field
+
+**Invalid Examples:**
+- `2026-01-01` → Error: "Ngày sinh phải là quá khứ hoặc hiện tại"
+
+---
+
+### 2.4 Temporary Absence (Tạm Vắng) Rules
+
+**Rule:** Citizens on temporary absence are excluded from fee calculations
+
+**Validation:**
+- `tamVangTu` must be before `tamVangDen`
+- If `tamVangDen >= CURRENT_DATE`, citizen is considered "actively absent"
+
+**Impact:**
+- Actively absent citizens are NOT counted in `soNguoi`
+- Fees are automatically recalculated when tamVang status changes
+
+**Example:**
+```
+Citizen registers temporary absence:
+- tamVangTu: 2025-01-01
+- tamVangDen: 2025-12-31
+
+On 2025-06-15:
+- tamVangDen (2025-12-31) >= today (2025-06-15)
+- Status: Actively absent
+- Action: Excluded from fee calculation
+
+On 2026-01-15:
+- tamVangDen (2025-12-31) < today (2026-01-15)
+- Status: Returned
+- Action: Included in fee calculation
+```
+
+---
+
+### 2.5 Temporary Residence (Tạm Trú) Rules
+
+**Rule:** Temporary residence records citizen's temporary stay
+
+**Validation:**
+- `tamTruTu` must be before `tamTruDen`
+
+**Note:** Unlike tamVang, tamTru does NOT affect fee calculation. It's for record-keeping only.
+
+---
+
+### 2.6 Death Registration (Khai Tử) Rules
+
+**Rule:** Death registration sets official death date
+
+**Behavior:**
+- `ngayKhaiTu` is set to **CURRENT_DATE** automatically
+- `lyDoKhaiTu` is optional (user can provide reason)
+
+**Impact:**
+- Deceased citizens remain in database for historical records
+- Frontend should filter out deceased citizens from active lists
+
+---
+
+## 3. Household Management Rules
+
+### 3.1 Household Code Uniqueness
+
+**Rule:** `soHoKhau` must be unique across all households
+
+**Validation:** Enforced at database level with UNIQUE constraint
+
+**Error Message:**
+```
+"Số hộ khẩu đã tồn tại"
+```
+
+---
+
+### 3.2 Required Fields
+
+**Rule:** All household core fields are mandatory
+
+**Required Fields:**
+- `soHoKhau` - Household code (unique)
+- `tenChuHo` - Head of household name
+- `diaChiThuongTru` - Permanent address
+
+---
+
+### 3.3 Member Count Tracking
+
+**Rule:** `soThanhVien` is automatically calculated
+
+**Calculation:**
+```
+soThanhVien = COUNT(citizens WHERE hoKhauId = this.id)
+```
+
+**Update Triggers:**
+- Citizen added to household
+- Citizen removed from household
+
+---
+
+### 3.4 Cascade Deletion
+
+**Rule:** Deleting household deletes all related records
+
+**Cascade Targets:**
+- All citizens (`nhan_khau`) in the household
+- All fee collection records (`thu_phi_ho_khau`)
+
+**Implementation:** `ON DELETE CASCADE` foreign key constraint
+
+---
+
+## 4. Fee Period Rules
+
+### 4.1 Fee Type (Loai) Rules
+
+**Rule:** Fee period type determines calculation and status behavior
+
+**Type Values:**
+
+**1. BAT_BUOC (Mandatory Fee)**
+- `dinhMuc` must be > 0
+- Fees are **automatically calculated** for all households
+- Status can be: CHUA_NOP or DA_NOP
+- Fees **auto-recalculate** when household members change
+
+**2. TU_NGUYEN (Voluntary Fee)**
+- `dinhMuc` defaults to 0 (optional contribution)
+- No automatic calculation
+- Status is always: KHONG_AP_DUNG
+- Does **NOT** auto-recalculate
+
+**Implementation:**
 ```java
 public enum LoaiThuPhi {
     BAT_BUOC,   // Mandatory
@@ -416,187 +533,249 @@ public enum LoaiThuPhi {
 }
 ```
 
-**Invalid Value Error:**
-```json
-"Giá trị 'OPTIONAL' không hợp lệ cho trường 'loaiPhi'. Chỉ chấp nhận: BAT_BUOC, TU_NGUYEN"
+---
+
+### 4.2 Date Range Validation
+
+**Rule:** Fee period must have valid date range
+
+**Validation:**
+- `ngayKetThuc >= ngayBatDau`
+
+**Implementation:** Validated in `DotThuPhiRequestDto`
+
+**Error Message:**
+```
+"Ngày kết thúc phải sau hoặc bằng ngày bắt đầu"
 ```
 
-#### 2.2 Payment Status Enum (TrangThaiThuPhi)
+---
 
+### 4.3 Fee Rate (Dinh Muc) Rules
+
+**Rule:** Fee rate validation depends on fee type
+
+**For BAT_BUOC:**
+- `dinhMuc` must be > 0
+- Typical value: 6,000 VND/person/month
+
+**For TU_NGUYEN:**
+- `dinhMuc` can be 0 or omitted
+- No validation required
+
+**Implementation:**
 ```java
-public enum TrangThaiThuPhi {
-    CHUA_NOP,  // Not paid
-    DA_NOP     // Fully paid
+@Data
+public class DotThuPhiRequestDto {
+    @NotBlank
+    private String tenDot;
+    
+    @NotNull
+    private LoaiThuPhi loai;
+    
+    @NotNull
+    private LocalDate ngayBatDau;
+    
+    @NotNull
+    private LocalDate ngayKetThuc;
+    
+    private Integer dinhMuc;  // Validated based on loai
 }
 ```
 
-**Note:** Frontend should never send `trangThai` - it's auto-calculated by backend.
+---
+
+### 4.4 Created By Tracking
+
+**Rule:** System tracks who created the fee period
+
+**Fields:**
+- `createdBy` - ID of the account that created the period
+- `createdAt` - Timestamp of creation
+- `updatedAt` - Timestamp of last update
+
+**Implementation:** Automatically set in service layer from SecurityContext
 
 ---
 
-### 3. Business Logic Validation
+## 5. Account Management Rules
 
-#### 3.1 Foreign Key Existence
+### 5.1 Username Uniqueness
 
-Before creating a fee collection record:
+**Rule:** `tenDangNhap` must be unique
+
+**Validation:** Enforced at database level with UNIQUE constraint
+
+**Error Message:**
+```
+"Tên đăng nhập đã tồn tại"
+```
+
+---
+
+### 5.2 Password Requirements
+
+**Rule:** Password must meet minimum security standards
+
+**Requirements:**
+- Minimum length: 6 characters
+- Stored as BCrypt hash (never plain text)
+
+**Implementation:**
 ```java
-HoKhau hoKhau = hoKhauRepo.findById(dto.getHoKhauId())
-    .orElseThrow(() -> new RuntimeException("Không tìm thấy hộ khẩu"));
-
-DotThuPhi dotThuPhi = dotThuPhiRepo.findById(dto.getDotThuPhiId())
-    .orElseThrow(() -> new RuntimeException("Không tìm thấy đợt thu phí"));
-```
-
-#### 3.2 Date Range Validation
-
-For fee periods:
-```
-ngayKetThuc must be > ngayBatDau
-```
-
-For temporary residence/absence:
-```
-denNgay must be > tuNgay (if both provided)
+String hashedPassword = passwordEncoder.encode(plainPassword);
 ```
 
 ---
 
-## Data Integrity Rules
+### 5.3 Role Assignment
 
-### 1. Unique Constraints
+**Rule:** Every account must have exactly one role
 
-| Table | Field | Constraint |
-|-------|-------|------------|
-| tai_khoan | ten_dang_nhap | UNIQUE |
-| ho_khau | so_ho_khau | UNIQUE |
-| nhan_khau | cccd | UNIQUE (if not NULL) |
+**Valid Roles:**
+- `ADMIN` - System administrator
+- `TOTRUONG` - Population manager
+- `KETOAN` - Accountant
 
-### 2. Referential Integrity
-
-All foreign keys have `REFERENCES` constraints:
-
-```sql
-nhan_khau.ho_khau_id REFERENCES ho_khau(id) ON DELETE CASCADE
-bien_dong.nhan_khau_id REFERENCES nhan_khau(id) ON DELETE CASCADE
-thu_phi_ho_khau.ho_khau_id REFERENCES ho_khau(id) ON DELETE CASCADE
-thu_phi_ho_khau.dot_thu_phi_id REFERENCES dot_thu_phi(id) ON DELETE CASCADE
-```
-
-### 3. Cascade Delete Rules
-
-**When deleting a household (`ho_khau`):**
-- ✅ All citizens (`nhan_khau`) in household are deleted
-- ✅ All fee collection records (`thu_phi_ho_khau`) are deleted
-- ✅ All population changes (`bien_dong`) via citizen are deleted
-
-**Rationale:** Maintain data consistency, prevent orphaned records.
-
----
-
-### 4. Check Constraints
-
-#### 4.1 Fee Type Constraint
-
-```sql
-ALTER TABLE dot_thu_phi
-ADD CONSTRAINT check_loai_phi 
-CHECK (loai_phi IN ('BAT_BUOC', 'TU_NGUYEN'));
-```
-
-#### 4.2 Payment Status Constraint
-
-```sql
-ALTER TABLE thu_phi_ho_khau
-ADD CONSTRAINT check_trang_thai
-CHECK (trang_thai IN ('CHUA_NOP', 'DA_NOP'));
+**Implementation:**
+```java
+public enum Role {
+    ADMIN,
+    TOTRUONG,
+    KETOAN
+}
 ```
 
 ---
 
-## Audit Trail
+### 5.4 Account Deletion Restrictions
 
-### 1. Created By / Created At
+**Rule:** Certain accounts cannot be deleted
 
-All entities store:
-- `created_by` - User ID who created the record
-- `created_at` - Timestamp of creation
+**Restrictions:**
+1. Cannot delete ADMIN accounts
+2. Cannot delete your own account
 
-### 2. Updated At (Fee Collection Only)
+**Implementation:** Enforced in `TaiKhoanService.deleteAccount()`
 
-`thu_phi_ho_khau` table includes:
-- `updated_at` - Timestamp of last update
+**Error Message:**
+```
+"Không thể xóa tài khoản ADMIN hoặc chính mình"
+```
 
-**Future Enhancement:** Add `updated_by` field to track who modified records.
+**Code Logic:**
+```java
+public void deleteAccount(Long accountId, String currentUsername) {
+    TaiKhoan account = repository.findById(accountId)
+        .orElseThrow(() -> new RuntimeException("Không tìm thấy tài khoản"));
+    
+    // Check if deleting own account
+    if (account.getTenDangNhap().equals(currentUsername)) {
+        throw new RuntimeException("Không thể xóa tài khoản ADMIN hoặc chính mình");
+    }
+    
+    // Check if deleting ADMIN account
+    if (account.getRole() == Role.ADMIN) {
+        throw new RuntimeException("Không thể xóa tài khoản ADMIN hoặc chính mình");
+    }
+    
+    repository.delete(account);
+}
+```
 
 ---
 
-## Business Rule Changes in v1.1
+## 6. Authorization Rules
 
-### Changes from v1.0
+### 6.1 Role-Based Access Control
 
-| Rule | v1.0 | v1.1 | Rationale |
-|------|------|------|-----------|
-| **Fee Collection Period** | Monthly | Annual | Simplify collection, align with real-world practice |
-| **Fee Calculation** | Manual entry | Auto-calculated | Reduce errors, ensure consistency |
-| **Temporary Absence** | Ignored | Excluded from fee | Fair fee calculation |
-| **Payment Status** | Manual entry | Auto-updated | Real-time status tracking |
-| **Fee Management Role** | ADMIN/TOTRUONG | KETOAN only | Financial accountability |
+**Rule:** Each endpoint requires specific roles
 
-### Migration Impact
+**Access Matrix:**
 
-- Existing records with `months` field → deprecated
-- New records use `periodDescription` (free text, e.g., "Cả năm 2025")
-- `soNguoi` and `tongPhi` recalculated for all records on update
+| Operation | ADMIN | TOTRUONG | KETOAN |
+|-----------|-------|----------|---------|
+| **Authentication** |
+| Register | ✅ | ✅ | ✅ |
+| Login | ✅ | ✅ | ✅ |
+| **Citizens** |
+| View All | ✅ | ✅ | ✅ |
+| Create | ✅ | ✅ | ❌ |
+| Update | ✅ | ✅ | ❌ |
+| Delete | ✅ | ✅ | ❌ |
+| TamTru/TamVang | ✅ | ✅ | ❌ |
+| **Households** |
+| View All | ✅ | ✅ | ✅ |
+| Create | ✅ | ✅ | ❌ |
+| Update | ✅ | ✅ | ❌ |
+| Delete | ✅ | ✅ | ❌ |
+| **Fee Periods** |
+| View All | ✅ | ✅ | ✅ |
+| Create | ✅ | ✅ | ❌ |
+| Update | ✅ | ✅ | ❌ |
+| Delete | ✅ | ✅ | ❌ |
+| **Fee Collections** |
+| View All | ✅ | ✅ | ✅ |
+| Create | ✅ | ❌ | ✅ |
+| Update | ✅ | ❌ | ✅ |
+| Delete | ✅ | ❌ | ✅ |
+| Calculate | ✅ | ✅ | ✅ |
+| **Accounts** |
+| View All | ✅ | ❌ | ❌ |
+| Delete | ✅ | ❌ | ❌ |
+
+**Implementation:**
+```java
+@PreAuthorize("hasAnyRole('ADMIN', 'TOTRUONG', 'KETOAN')")  // View
+@PreAuthorize("hasAnyRole('ADMIN', 'TOTRUONG')")  // Citizen/Household
+@PreAuthorize("hasAnyRole('ADMIN', 'KETOAN')")  // Fee operations
+@PreAuthorize("hasRole('ADMIN')")  // Account management
+```
 
 ---
 
-## Future Business Rules (Planned)
+### 6.2 JWT Token Expiration
 
-### 1. Fee Discount Rules
+**Rule:** JWT tokens expire after 24 hours
 
-**Planned:** Discounts for low-income households, elderly-only households, etc.
-
-**Example:**
+**Configuration:**
 ```
-IF household has only members aged >= 65 THEN
-    Apply 50% discount
-END IF
+EXPIRATION = 86400000 ms = 24 hours
 ```
 
-### 2. Late Payment Penalty
-
-**Planned:** Penalty for payments after deadline.
-
-**Example:**
-```
-IF ngayThu > dotThuPhi.ngayKetThuc + 30 days THEN
-    Add 5% penalty to tongPhi
-END IF
-```
-
-### 3. Bulk Payment Import
-
-**Planned:** Import payments from Excel file (batch processing).
-
-### 4. Payment Reminders
-
-**Planned:** Auto-send reminders to households with `CHUA_NOP` status.
+**Behavior:**
+- After expiration, user must login again
+- Frontend should handle 401 Unauthorized responses
 
 ---
 
-## Conclusion
+### 6.3 CORS Configuration
 
-These business rules ensure the QuanLyDanCu system:
+**Rule:** API allows cross-origin requests from frontend
 
-- ✅ Accurately calculates annual fees based on household composition
-- ✅ Fairly excludes temporarily absent members from fee calculations
-- ✅ Automatically updates payment status for real-time tracking
-- ✅ Enforces role-based authorization for financial accountability
-- ✅ Maintains data integrity through validation and constraints
+**Allowed Origins:**
+- `http://localhost:3000` (React dev server)
+- `http://localhost:5173` (Vite dev server)
 
-**Key Principle:** "Automate calculation, validate input, enforce authorization" - reducing manual errors and ensuring compliance.
+**Allowed Methods:**
+- GET, POST, PUT, DELETE, OPTIONS
 
-For implementation details, see:
-- [ARCHITECTURE.md](./ARCHITECTURE.md) - System design
-- [API_REFERENCE.md](./API_REFERENCE.md) - API endpoints
-- [TEST_GUIDE.md](./TEST_GUIDE.md) - Testing procedures
+**Implementation:** Configured in `SecurityConfig.corsConfigurationSource()`
+
+---
+
+## Summary
+
+These business rules are **extracted directly from the source code** and represent the **actual behavior** of the QuanLyDanCu backend system. The most complex rules involve:
+
+1. **Fee calculation with member counting** - Excludes temporarily absent citizens
+2. **Multiple payment support** - Status across all related records
+3. **Payment date validation** - Must be within fee period range
+4. **Automatic recalculation** - Triggered by household changes
+5. **Role-based authorization** - Granular access control
+
+All error messages shown are **exact strings from the code**, not assumptions.
+
+---
+
+**End of Business Rules Documentation**
