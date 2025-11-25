@@ -170,17 +170,23 @@ Hệ thống tuân theo kiến trúc 4 tầng:
 
 ```mermaid
 graph TB
-    subgraph "Client Layer"
+
+%% ===== Client =====
+    subgraph ClientLayer["Client Layer"]
         Client[React Frontend]
     end
-    
-    subgraph "Backend System"
-        subgraph "Security"
+
+%% ===== Backend =====
+    subgraph BackendLayer["Backend System"]
+
+    %% Security
+        subgraph SecurityLayer["Security"]
             JWTFilter[JWT Filter]
-            Security[Spring Security]
+            SpringSecurity[Spring Security]
         end
-        
-        subgraph "Presentation Layer"
+
+    %% Presentation
+        subgraph PresentationLayer["Presentation Layer"]
             AuthC[Auth Controller]
             NhanKhauC[NhanKhau Controller]
             HoKhauC[HoKhau Controller]
@@ -188,66 +194,49 @@ graph TB
             ThuPhiC[ThuPhiHoKhau Controller]
             TaiKhoanC[TaiKhoan Controller]
         end
-        
-        subgraph "Service Layer"
+
+    %% Service
+        subgraph ServiceLayer["Service Layer"]
             AuthS[Auth Service]
             HoKhauS[HoKhau Service]
             ThuPhiS[ThuPhiHoKhau Service]
         end
-        
-        subgraph "Repository Layer"
+
+    %% Repository
+        subgraph RepositoryLayer["Repository Layer"]
             HoKhauR[HoKhau Repository]
             NhanKhauR[NhanKhau Repository]
             DotThuPhiR[DotThuPhi Repository]
             ThuPhiR[ThuPhiHoKhau Repository]
             TaiKhoanR[TaiKhoan Repository]
         end
-        
-        subgraph "Domain Layer"
+
+    %% Entities
+        subgraph DomainLayer["Domain Layer"]
             HoKhauE[HoKhau Entity]
             NhanKhauE[NhanKhau Entity]
             DotThuPhiE[DotThuPhi Entity]
             ThuPhiE[ThuPhiHoKhau Entity]
             TaiKhoanE[TaiKhoan Entity]
         end
+
     end
-    
-    subgraph "Database"
-        PostgreSQL[(PostgreSQL Database)]
+
+%% ===== Database =====
+    subgraph Database["Database"]
+        PostgreSQL[(PostgreSQL)]
     end
-    
+
+%% ===== Edges =====
+
     Client -->|HTTP/JSON| JWTFilter
-    JWTFilter --> Security
-    Security --> AuthC
-    Security --> NhanKhauC
-    Security --> HoKhauC
-    Security --> DotThuPhiC
-    Security --> ThuPhiC
-    Security --> TaiKhoanC
-    
-    AuthC --> AuthS
-    HoKhauC --> HoKhauS
-    ThuPhiC --> ThuPhiS
-    
-    AuthS --> TaiKhoanR
-    HoKhauS --> HoKhauR
-    HoKhauS --> NhanKhauR
-    ThuPhiS --> ThuPhiR
-    ThuPhiS --> DotThuPhiR
-    ThuPhiS --> HoKhauR
-    ThuPhiS --> NhanKhauR
-    
-    HoKhauR --> HoKhauE
-    NhanKhauR --> NhanKhauE
-    DotThuPhiR --> DotThuPhiE
-    ThuPhiR --> ThuPhiE
-    TaiKhoanR --> TaiKhoanE
-    
-    HoKhauE -.->|JPA/Hibernate| PostgreSQL
-    NhanKhauE -.->|JPA/Hibernate| PostgreSQL
-    DotThuPhiE -.->|JPA/Hibernate| PostgreSQL
-    ThuPhiE -.->|JPA/Hibernate| PostgreSQL
-    TaiKhoanE -.->|JPA/Hibernate| PostgreSQL
+    JWTFilter --> SpringSecurity
+    SpringSecurity --> PresentationLayer
+
+    PresentationLayer --> ServiceLayer
+    ServiceLayer --> RepositoryLayer
+    RepositoryLayer --> DomainLayer
+    DomainLayer --> PostgreSQL
 ```
 
 ### 4.2 Luồng Xử Lý Request
