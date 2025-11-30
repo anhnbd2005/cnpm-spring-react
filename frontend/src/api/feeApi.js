@@ -33,16 +33,28 @@ const normalizeId = (value) => {
   return Number.isNaN(parsed) ? value : parsed;
 };
 
-export const TRANG_THAI_THU_PHI = Object.freeze(['DA_NOP', 'CHUA_NOP', 'KHONG_AP_DUNG']);
+const PAYMENT_FIELDS = ['hoKhauId', 'dotThuPhiId', 'ngayThu', 'ghiChu', 'tongPhi'];
 
-const PAYMENT_FIELDS = ['hoKhauId', 'dotThuPhiId', 'ngayThu', 'ghiChu', 'trangThai'];
-
-const normalizeStatus = (value) => {
-  if (value === undefined || value === null) {
+const normalizeCurrency = (value) => {
+  if (value === undefined || value === null || value === '') {
     return undefined;
   }
-  const normalized = String(value).trim().toUpperCase();
-  return TRANG_THAI_THU_PHI.includes(normalized) ? normalized : undefined;
+
+  if (typeof value === 'number' && !Number.isNaN(value)) {
+    return Math.round(value * 100) / 100;
+  }
+
+  const cleaned = String(value).replace(/[^0-9.,-]/g, '').replace(/,/g, '.').trim();
+  if (!cleaned) {
+    return undefined;
+  }
+
+  const parsed = Number.parseFloat(cleaned);
+  if (Number.isNaN(parsed)) {
+    return undefined;
+  }
+
+  return Math.round(parsed * 100) / 100;
 };
 
 const buildPaymentPayload = (payload = {}) => {
@@ -70,12 +82,12 @@ const buildPaymentPayload = (payload = {}) => {
     sanitized.ghiChu = sanitized.ghiChu.trim();
   }
 
-  if (sanitized.trangThai !== undefined) {
-    const normalized = normalizeStatus(sanitized.trangThai);
-    if (normalized) {
-      sanitized.trangThai = normalized;
+  if (sanitized.tongPhi !== undefined) {
+    const amount = normalizeCurrency(sanitized.tongPhi);
+    if (amount === undefined) {
+      delete sanitized.tongPhi;
     } else {
-      delete sanitized.trangThai;
+      sanitized.tongPhi = amount;
     }
   }
 

@@ -8,6 +8,15 @@ import useApiHandler from '../../../hooks/useApiHandler';
 import { useAuth } from '../../auth/contexts/AuthContext';
 import StatusBadge from '../components/StatusBadge';
 
+const TYPE_META = {
+  BAT_BUOC: { label: 'Bắt buộc', color: 'bg-blue-100 text-blue-800' },
+  TU_NGUYEN: { label: 'Tự nguyện', color: 'bg-purple-100 text-purple-800' }
+};
+
+const formatAmount = (row) => (
+  row?.loaiThuPhi === 'TU_NGUYEN' ? row?.tongPhiTuNguyen : row?.tongPhi
+);
+
 /**
  * FeeCollectionList - Refactored 2025
  * 
@@ -66,15 +75,31 @@ const FeeCollectionList = () => {
     { key: 'soHoKhau', title: 'Số hộ khẩu' },
     { key: 'tenChuHo', title: 'Chủ hộ' },
     { key: 'tenDot', title: 'Đợt thu' },
+    {
+      key: 'loaiThuPhi',
+      title: 'Loại phí',
+      render: (value) => {
+        const meta = TYPE_META[value] || { label: 'Khác', color: 'bg-gray-100 text-gray-700' };
+        return (
+          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${meta.color}`}>
+            {meta.label}
+          </span>
+        );
+      }
+    },
     { 
       key: 'soNguoi', 
       title: 'Số người',
-      render: (value) => <span className="font-medium text-gray-700">{value || 0}</span>
+      render: (value, row) => (
+        <span className="font-medium text-gray-700">{row?.loaiThuPhi === 'TU_NGUYEN' ? '—' : (value || 0)}</span>
+      )
     },
     { 
       key: 'tongPhi', 
       title: 'Tổng phí',
-      render: (value) => <span className="font-semibold text-blue-700">{new Intl.NumberFormat('vi-VN').format(value || 0)} ₫</span>
+      render: (value, row) => (
+        <span className="font-semibold text-blue-700">{new Intl.NumberFormat('vi-VN').format(formatAmount(row) || 0)} ₫</span>
+      )
     },
     { 
       key: 'ngayThu', 

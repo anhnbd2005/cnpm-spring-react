@@ -1,5 +1,6 @@
 package com.example.QuanLyDanCu.dto.response;
 
+import com.example.QuanLyDanCu.enums.LoaiThuPhi;
 import com.example.QuanLyDanCu.enums.TrangThaiThuPhi;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
@@ -29,6 +30,9 @@ public class ThuPhiHoKhauResponseDto {
     @Schema(description = "Tên đợt thu", example = "Phí vệ sinh tháng 1/2025")
     private String tenDot;
 
+    @Schema(description = "Loại đợt thu", example = "BAT_BUOC")
+    private LoaiThuPhi loaiThuPhi;
+
     @Schema(description = "Số người trong hộ", example = "3")
     private Integer soNguoi;
 
@@ -37,6 +41,9 @@ public class ThuPhiHoKhauResponseDto {
 
     @Schema(description = "Trạng thái", example = "DA_NOP")
     private TrangThaiThuPhi trangThai;
+
+    @Schema(description = "Số tiền hộ đóng góp trong đợt tự nguyện (null nếu không phải đợt tự nguyện)", example = "750000")
+    private BigDecimal tongPhiTuNguyen;
 
     @Schema(description = "Ngày thu", example = "2025-01-15")
     private LocalDate ngayThu;

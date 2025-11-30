@@ -8,6 +8,13 @@ import useApiHandler from '../../../hooks/useApiHandler';
 import { useAuth } from '../../auth/contexts/AuthContext';
 import StatusBadge from '../components/StatusBadge';
 
+const TYPE_LABEL = {
+  BAT_BUOC: 'Bắt buộc',
+  TU_NGUYEN: 'Tự nguyện'
+};
+
+const formatCurrency = (value) => new Intl.NumberFormat('vi-VN').format(value || 0);
+
 /**
  * FeeCollectionDetail Page - Refactored 2025
  * 
@@ -81,8 +88,9 @@ const FeeCollectionDetail = () => {
   }, [id, isNew]);
 
   const stableInitialValues = useMemo(() => {
-    if (isNew) return {};
-    return collection || {};
+    if (isNew || !collection) return {};
+    const contribution = collection.tongPhiTuNguyen ?? collection.tongPhi;
+    return { ...collection, tongPhi: contribution };
   }, [isNew, collection]);
 
   /**
@@ -93,30 +101,19 @@ const FeeCollectionDetail = () => {
    * - On 400 error: show inline error, DO NOT navigate away
    * - On success: show toast, navigate after 1.5s
    */
-  const handleSubmit = async (data, setFormError) => {
+  const handleSubmit = async (payload, setFormError) => {
     if (submitting) return;
 
     setSubmitting(true);
 
     try {
-      // Prepare payload (remove soTienDaThu - backend doesn't accept it anymore)
-      const payload = {
-        hoKhauId: data.hoKhauId,
-        dotThuPhiId: data.dotThuPhiId,
-        ngayThu: data.ngayThu,
-        ghiChu: data.ghiChu || '',
-        trangThai: data.trangThai,
-      };
-
       let response;
       if (isNew) {
         response = await feeCollectionApi.create(payload);
       } else {
-        // Edit mode: only send ngayThu and ghiChu
         response = await feeCollectionApi.update(id, {
-          ngayThu: data.ngayThu,
-          ghiChu: data.ghiChu || '',
-          trangThai: data.trangThai,
+          ngayThu: payload.ngayThu,
+          ghiChu: payload.ghiChu || ''
         });
       }
 
@@ -239,6 +236,8 @@ const FeeCollectionDetail = () => {
               <div className="mt-2 flex flex-wrap gap-3 text-sm text-gray-600">
                 <span>Số hộ khẩu: <strong>{collection.soHoKhau}</strong></span>
                 <span>Đợt thu: <strong>{collection.tenDot}</strong></span>
+                <span>Loại: <strong>{TYPE_LABEL[collection.loaiThuPhi] || 'Không xác định'}</strong></span>
+                <span>Số tiền: <strong>{formatCurrency((collection.loaiThuPhi === 'TU_NGUYEN' ? collection.tongPhiTuNguyen : collection.tongPhi) || 0)} ₫</strong></span>
                 <span className="inline-flex items-center gap-2">
                   Trạng thái:
                   <StatusBadge status={collection.trangThai} />

@@ -8,7 +8,7 @@ import { LOAI_THU_PHI } from '../../../api/feePeriodApi';
 
 const DATE_REG_EXP = /^\d{4}-\d{2}-\d{2}$/;
 
-const DEFAULT_VALUES = {
+const emptyFormValues = {
   tenDot: '',
   loai: LOAI_THU_PHI[0],
   ngayBatDau: '',
@@ -33,16 +33,24 @@ const schema = yup.object().shape({
       return new Date(value) >= new Date(ngayBatDau);
     }),
   dinhMuc: yup.number()
-    .transform((value, originalValue) => (originalValue === '' || originalValue === null ? undefined : value))
-    .when('loai', {
-      is: 'BAT_BUOC',
-      then: (current) => current
-        .typeError('Định mức phải là số')
-        .positive('Định mức phải lớn hơn 0')
-        .required('Vui lòng nhập định mức phí'),
-      otherwise: (current) => current
-        .typeError('Định mức phải là số')
-        .min(0, 'Định mức không được âm')
+    .nullable()
+    .transform((value, originalValue) => {
+      if (originalValue === '' || originalValue === null || originalValue === undefined) {
+        return null;
+      }
+      const numeric = Number(originalValue);
+      return Number.isNaN(numeric) ? NaN : numeric;
+    })
+    .when('loai', (loai, current) => {
+      const baseSchema = current.typeError('Định mức phải là số');
+      if (loai === 'BAT_BUOC') {
+        return baseSchema
+          .positive('Định mức phải lớn hơn 0')
+          .required('Vui lòng nhập định mức phí');
+      }
+      return baseSchema
+        .notRequired()
+        .min(0, 'Định mức không được âm');
     })
 });
 
@@ -63,30 +71,54 @@ const toDateInput = (value) => {
   return parsed.toISOString().split('T')[0];
 };
 
-export const FeePeriodForm = ({ initialValues, onSubmit }) => {
-  const { register, handleSubmit, reset, formState: { errors }, control } = useForm({
+const mapInitialValues = (initialValues) => ({
+  tenDot: initialValues?.tenDot || '',
+  loai: (() => {
+    if (!initialValues?.loai) return LOAI_THU_PHI[0];
+    const normalized = initialValues.loai.toString().trim().toUpperCase();
+    return LOAI_THU_PHI.includes(normalized) ? normalized : LOAI_THU_PHI[0];
+  })(),
+  ngayBatDau: toDateInput(initialValues?.ngayBatDau),
+  ngayKetThuc: toDateInput(initialValues?.ngayKetThuc),
+  dinhMuc: initialValues?.dinhMuc !== undefined && initialValues?.dinhMuc !== null
+    ? String(initialValues.dinhMuc)
+    : ''
+});
+
+export const FeePeriodForm = ({
+  initialValues,
+  onSubmit,
+  formId,
+  showActions = true,
+  onCancel,
+  submitLabel = 'Lưu thay đổi'
+}) => {
+  const { register, handleSubmit, reset, formState: { errors }, control, clearErrors, setValue } = useForm({
     resolver: yupResolver(schema),
-    defaultValues: DEFAULT_VALUES
+    defaultValues: emptyFormValues
   });
 
   const loaiValue = useWatch({ control, name: 'loai' }) || LOAI_THU_PHI[0];
 
   // Update form when initialValues changes (edit mode)
   useEffect(() => {
-    if (initialValues && Object.keys(initialValues).length > 0) {
-      reset({
-        tenDot: initialValues.tenDot || '',
-        loai: initialValues.loai || LOAI_THU_PHI[0],
-        ngayBatDau: toDateInput(initialValues.ngayBatDau),
-        ngayKetThuc: toDateInput(initialValues.ngayKetThuc),
-        dinhMuc: initialValues.dinhMuc ?? ''
-      });
-    } else {
-      reset(DEFAULT_VALUES);
+    const hasInitialValues = initialValues && Object.keys(initialValues).length > 0;
+    if (!hasInitialValues) {
+      reset({ ...emptyFormValues });
+      return;
     }
+    reset(mapInitialValues(initialValues));
   }, [initialValues, reset]);
 
+  useEffect(() => {
+    if (loaiValue === 'TU_NGUYEN') {
+      setValue('dinhMuc', '', { shouldDirty: true, shouldValidate: true });
+      clearErrors('dinhMuc');
+    }
+  }, [loaiValue, setValue, clearErrors]);
+
   const onSubmitHandler = (data) => {
+    console.log('FEE_PERIOD_FORM_VALUES', data);
     // Ensure data matches backend DTO exactly
     const normalizedLoai = (data.loai || '').toString().trim().toUpperCase();
     const isVoluntary = normalizedLoai === 'TU_NGUYEN';
@@ -94,15 +126,18 @@ export const FeePeriodForm = ({ initialValues, onSubmit }) => {
       tenDot: data.tenDot.trim(),
       loai: normalizedLoai,
       ngayBatDau: toDateInput(data.ngayBatDau),
-      ngayKetThuc: toDateInput(data.ngayKetThuc),
-      dinhMuc: isVoluntary ? 0 : Number(data.dinhMuc)
+      ngayKetThuc: toDateInput(data.ngayKetThuc)
     };
+
+    if (!isVoluntary && data.dinhMuc !== undefined) {
+      formattedData.dinhMuc = Number(data.dinhMuc);
+    }
 
     onSubmit(formattedData);
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmitHandler)} className="space-y-4">
+    <form id={formId} onSubmit={handleSubmit(onSubmitHandler)} className="space-y-4">
       <FormInput
         label="Tên đợt thu"
         register={register}
@@ -152,14 +187,25 @@ export const FeePeriodForm = ({ initialValues, onSubmit }) => {
         </p>
       )}
 
-      <div className="flex justify-end space-x-4">
-        <button
-          type="submit"
-          className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
-        >
-          Lưu thay đổi
-        </button>
-      </div>
+      {showActions && (
+        <div className="flex justify-end space-x-4">
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+            >
+              Hủy
+            </button>
+          )}
+          <button
+            type="submit"
+            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+          >
+            {submitLabel}
+          </button>
+        </div>
+      )}
     </form>
   );
 };

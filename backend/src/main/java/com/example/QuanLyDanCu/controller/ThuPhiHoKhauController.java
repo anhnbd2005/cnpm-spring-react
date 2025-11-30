@@ -115,7 +115,7 @@ public class ThuPhiHoKhauController {
 
     @PostMapping
     @PreAuthorize("hasAnyAuthority('ADMIN','KETOAN')")
-    @Operation(summary = "Tạo bản ghi thu phí mới", description = "Tạo một bản ghi thu phí hộ khẩu mới (yêu cầu quyền ADMIN hoặc KETOAN). Số người và tổng phí được tính tự động.")
+        @Operation(summary = "Tạo bản ghi thu phí mới", description = "Tạo một bản ghi thu phí hộ khẩu mới (yêu cầu quyền ADMIN hoặc KETOAN). Phí bắt buộc sẽ tự tính số người và tổng phí. Phí tự nguyện yêu cầu cung cấp trường tongPhi trong payload.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "201", description = "Tạo thu phí thành công",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ThuPhiHoKhauResponseDto.class))),
@@ -129,7 +129,7 @@ public class ThuPhiHoKhauController {
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyAuthority('ADMIN','KETOAN')")
-    @Operation(summary = "Cập nhật thu phí", description = "Cập nhật thông tin thu phí hộ khẩu (yêu cầu quyền ADMIN hoặc KETOAN)")
+        @Operation(summary = "Cập nhật thu phí", description = "Cập nhật thông tin thu phí hộ khẩu (yêu cầu quyền ADMIN hoặc KETOAN). Chỉ hỗ trợ chỉnh sửa ngày thu và ghi chú.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Cập nhật thành công",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ThuPhiHoKhauResponseDto.class))),
