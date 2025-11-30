@@ -26,4 +26,9 @@ public class ThuPhiHoKhauRequestDto {
 
     @Schema(description = "Ghi chú", example = "Đã thanh toán đủ")
     private String ghiChu;
+
+    @Schema(description = "Tổng số tiền hộ khẩu tự nguyện đóng góp (chỉ bắt buộc nếu đợt thu là tự nguyện)", example = "500000")
+    @Digits(integer = 15, fraction = 2, message = "Tổng phí tự nguyện không đúng định dạng")
+    @DecimalMin(value = "0.01", message = "Tổng phí tự nguyện phải lớn hơn 0")
+    private BigDecimal tongPhi;
 }

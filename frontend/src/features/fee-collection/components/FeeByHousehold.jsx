@@ -3,6 +3,15 @@ import DataTable from '../../../components/Table/DataTable';
 import feeCollectionApi from '../../../api/feeCollectionApi';
 import StatusBadge from './StatusBadge';
 
+const TYPE_META = {
+  BAT_BUOC: { label: 'Bắt buộc', color: 'text-blue-700' },
+  TU_NGUYEN: { label: 'Tự nguyện', color: 'text-purple-700' }
+};
+
+const formatAmount = (row) => (
+  row?.loaiThuPhi === 'TU_NGUYEN' ? row?.tongPhiTuNguyen : row?.tongPhi
+);
+
 /**
  * FeeByHousehold - Refactored 2025
  * 
@@ -32,17 +41,25 @@ const FeeByHousehold = ({ householdId }) => {
 
   const columns = [
     { key: 'tenDot', title: 'Đợt thu' },
+    {
+      key: 'loaiThuPhi',
+      title: 'Loại',
+      render: (value) => {
+        const meta = TYPE_META[value] || { label: 'Khác', color: 'text-gray-600' };
+        return <span className={`text-xs font-semibold ${meta.color}`}>{meta.label}</span>;
+      }
+    },
     { 
       key: 'soNguoi', 
       title: 'Số người',
-      render: (value) => `${value || 0} người`
+      render: (value, row) => row?.loaiThuPhi === 'TU_NGUYEN' ? '—' : `${value || 0} người`
     },
     { 
       key: 'tongPhi', 
       title: 'Tổng phí',
-      render: (value) => (
+      render: (value, row) => (
         <span className="font-semibold text-blue-700">
-          {new Intl.NumberFormat('vi-VN').format(value || 0)} ₫
+          {new Intl.NumberFormat('vi-VN').format(formatAmount(row) || 0)} ₫
         </span>
       )
     },

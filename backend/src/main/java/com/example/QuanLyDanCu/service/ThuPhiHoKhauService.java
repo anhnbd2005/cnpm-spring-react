@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -134,6 +135,7 @@ public class ThuPhiHoKhauService {
         boolean isVoluntary = dotThuPhi.getLoai() == LoaiThuPhi.TU_NGUYEN;
         int months = isVoluntary ? 0 : calculateMonthsInPeriod(dotThuPhi.getNgayBatDau(), dotThuPhi.getNgayKetThuc());
 
+        BigDecimal voluntaryAmount = isVoluntary ? BigDecimal.ZERO : null;
         List<ThuPhiHoKhauResponseDto> overview = new ArrayList<>();
 
         for (HoKhau hoKhau : households) {
@@ -159,9 +161,11 @@ public class ThuPhiHoKhauService {
                 .tenChuHo(hoKhau.getTenChuHo())
                 .dotThuPhiId(dotThuPhi.getId())
                 .tenDot(dotThuPhi.getTenDot())
+                .loaiThuPhi(dotThuPhi.getLoai())
                 .soNguoi(soNguoi)
-                .tongPhi(tongPhi)
+                .tongPhi(isVoluntary ? null : tongPhi)
                 .trangThai(trangThai)
+                .tongPhiTuNguyen(voluntaryAmount)
                 .ngayThu(null)
                 .ghiChu(null)
                 .collectedBy(null)
@@ -262,13 +266,12 @@ public class ThuPhiHoKhauService {
         int soNguoi;
         BigDecimal tongPhi;
         TrangThaiThuPhi trangThai;
-        
+
         if (dotThuPhi.getLoai() == LoaiThuPhi.TU_NGUYEN) {
-            // Voluntary fees - not applicable
             soNguoi = 0;
-            tongPhi = BigDecimal.ZERO;
+            tongPhi = normalizeVoluntaryAmount(dto.getTongPhi());
             trangThai = TrangThaiThuPhi.KHONG_AP_DUNG;
-            log.info("Creating voluntary fee record - status: KHONG_AP_DUNG");
+            log.info("Creating voluntary fee record - amount: {} VND", tongPhi);
         } else {
             // Mandatory fees - calculate and mark as paid
             soNguoi = countEligibleMembers(dto.getHoKhauId());
@@ -555,6 +558,23 @@ public class ThuPhiHoKhauService {
     // ========================================
 
     /**
+     * Chuẩn hóa và validate số tiền tự nguyện do người dùng nhập.
+     */
+    private BigDecimal normalizeVoluntaryAmount(BigDecimal rawAmount) {
+        if (rawAmount == null) {
+            throw new RuntimeException("Vui lòng nhập tổng phí khi ghi nhận đợt thu tự nguyện!");
+        }
+
+        BigDecimal normalized = rawAmount.setScale(2, RoundingMode.HALF_UP);
+
+        if (normalized.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RuntimeException("Tổng phí tự nguyện phải lớn hơn 0!");
+        }
+
+        return normalized;
+    }
+
+    /**
      * Đếm số người đủ điều kiện trong hộ khẩu
      * 
      * LOẠI TRỪ:
@@ -678,6 +698,11 @@ public class ThuPhiHoKhauService {
      * Chuyển đổi Entity -> Response DTO
      */
     private ThuPhiHoKhauResponseDto toResponseDto(ThuPhiHoKhau entity) {
+        LoaiThuPhi loaiThuPhi = entity.getDotThuPhi().getLoai();
+        boolean isVoluntary = loaiThuPhi == LoaiThuPhi.TU_NGUYEN;
+        BigDecimal voluntaryAmount = isVoluntary ? entity.getTongPhi() : null;
+        BigDecimal mandatoryAmount = isVoluntary ? null : entity.getTongPhi();
+
         return ThuPhiHoKhauResponseDto.builder()
                 .id(entity.getId())
                 .hoKhauId(entity.getHoKhau().getId())
@@ -685,9 +710,11 @@ public class ThuPhiHoKhauService {
                 .tenChuHo(entity.getHoKhau().getTenChuHo())
                 .dotThuPhiId(entity.getDotThuPhi().getId())
                 .tenDot(entity.getDotThuPhi().getTenDot())
+                .loaiThuPhi(loaiThuPhi)
                 .soNguoi(entity.getSoNguoi())
-                .tongPhi(entity.getTongPhi())
+                .tongPhi(mandatoryAmount)
                 .trangThai(entity.getTrangThai())
+                .tongPhiTuNguyen(voluntaryAmount)
                 .ngayThu(entity.getNgayThu())
                 .ghiChu(entity.getGhiChu())
                 .collectedBy(entity.getCollectedBy())

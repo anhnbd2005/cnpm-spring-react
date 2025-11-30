@@ -7,11 +7,14 @@ import FormSelect from '../../../components/Form/FormSelect';
 import FormAutocomplete from '../../../components/Form/FormAutocomplete';
 import householdApi from '../../../api/householdApi';
 
+const DATE_REG_EXP = /^\d{4}-\d{2}-\d{2}$/;
+
 // Helper function to calculate age from date of birth
 const calculateAge = (birthDate) => {
-  if (!birthDate) return 0;
+  if (!birthDate || !DATE_REG_EXP.test(birthDate)) return 0;
   const today = new Date();
-  const birth = new Date(birthDate);
+  const [year, month, day] = birthDate.split('-').map(Number);
+  const birth = new Date(year, month - 1, day);
   if (Number.isNaN(birth.getTime())) {
     return 0;
   }
@@ -51,6 +54,12 @@ const formatDateForApi = (value) => {
 };
 
 const trimString = (value) => (typeof value === 'string' ? value.trim() : value);
+const trimToNull = (value) => {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+};
 
 const normalizeId = (value) => {
   if (value === undefined || value === null || value === '') {
@@ -61,12 +70,6 @@ const normalizeId = (value) => {
 };
 
 const MIN_CCCD_AGE = 14;
-
-const parseDateValue = (value) => {
-  if (!value) return null;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-};
 
 const mapDtoToFormValues = (values = {}) => ({
   hoKhauId: values.hoKhauId ?? '',
@@ -85,6 +88,25 @@ const mapDtoToFormValues = (values = {}) => ({
 
 const DEFAULT_FORM_VALUES = mapDtoToFormValues();
 
+const optionalStringSchema = yup.string()
+  .transform((value, originalValue) => {
+    if (originalValue === '' || originalValue === undefined || originalValue === null) {
+      return null;
+    }
+    return typeof originalValue === 'string' ? originalValue.trim() : originalValue;
+  })
+  .nullable();
+
+const requiredTrimmedString = (message) => yup.string().trim().required(message);
+
+const dateStringSchema = yup.string()
+  .required('Vui lòng nhập ngày theo định dạng YYYY-MM-DD')
+  .matches(DATE_REG_EXP, 'Ngày không hợp lệ (YYYY-MM-DD)')
+  .test('not-future', 'Ngày không được là ngày trong tương lai', (value) => {
+    if (!value || !DATE_REG_EXP.test(value)) return false;
+    return new Date(value) <= new Date();
+  });
+
 const schema = yup.object().shape({
   hoKhauId: yup.number()
     .transform((value, originalValue) => {
@@ -96,87 +118,51 @@ const schema = yup.object().shape({
     })
     .typeError('Vui lòng chọn hộ khẩu hợp lệ')
     .required('Vui lòng chọn hộ khẩu'),
-  hoTen: yup.string().required('Vui lòng nhập họ tên'),
-  ngaySinh: yup.date()
-    .required('Vui lòng nhập ngày sinh')
-    .max(new Date(), 'Ngày sinh không được là ngày trong tương lai')
-    .typeError('Ngày sinh không hợp lệ'),
-  gioiTinh: yup.string().required('Vui lòng chọn giới tính'),
-  danToc: yup.string().required('Vui lòng nhập dân tộc'),
-  quocTich: yup.string().required('Vui lòng nhập quốc tịch'),
-  ngheNghiep: yup.string().required('Vui lòng nhập nghề nghiệp'),
+  hoTen: requiredTrimmedString('Vui lòng nhập họ tên'),
+  ngaySinh: dateStringSchema,
+  gioiTinh: yup.string()
+    .oneOf(['Nam', 'Nữ', 'Khác'], 'Giới tính không hợp lệ')
+    .required('Vui lòng chọn giới tính'),
+  danToc: requiredTrimmedString('Vui lòng nhập dân tộc'),
+  quocTich: requiredTrimmedString('Vui lòng nhập quốc tịch'),
+  ngheNghiep: requiredTrimmedString('Vui lòng nhập nghề nghiệp'),
   cmndCccd: yup.string()
-    .nullable()
-    .transform((value) => {
-      if (value === '' || value === undefined) {
-        return null;
-      }
-      return typeof value === 'string' ? value.trim() : value;
-    })
-    .when('ngaySinh', (ngaySinh, schema) => {
-      if (!ngaySinh) return schema;
-      const age = calculateAge(ngaySinh);
-      if (age < MIN_CCCD_AGE) {
-        return schema.test('under-14-no-cccd', 'Người dưới 14 tuổi không được cấp CMND/CCCD', (value) => !value);
-      }
-      return schema
-        .required('Người từ 14 tuổi trở lên phải có CMND/CCCD')
-        .matches(/^\d{9,12}$/, 'CMND/CCCD phải có 9-12 chữ số');
-    }),
-  ngayCap: yup.mixed()
-    .nullable()
     .transform((value, originalValue) => {
       if (originalValue === '' || originalValue === undefined || originalValue === null) {
         return null;
       }
-      return originalValue;
+      return typeof originalValue === 'string' ? originalValue.trim() : originalValue;
     })
-    .when('ngaySinh', (ngaySinh, schema) => {
-      if (!ngaySinh) return schema;
-      const age = calculateAge(ngaySinh);
-      if (age < MIN_CCCD_AGE) {
-        return schema.test('under-14-no-issue-date', 'Người dưới 14 tuổi không cần ngày cấp CMND/CCCD', (value) => value === null);
-      }
-      return schema
-        .required('Người từ 14 tuổi trở lên phải có ngày cấp CMND/CCCD')
-        .test('is-valid-date', 'Ngày cấp không hợp lệ', (value) => !!parseDateValue(value))
-        .test('min-age-14', 'Ngày cấp phải sau ngày sinh ít nhất 14 năm', function(value) {
-          const issueDate = parseDateValue(value);
-          const birthDate = parseDateValue(this.parent.ngaySinh);
-          if (!issueDate || !birthDate) return true;
-          const minIssueDate = new Date(birthDate);
-          minIssueDate.setFullYear(birthDate.getFullYear() + MIN_CCCD_AGE);
-          return issueDate >= minIssueDate;
-        })
-        .test('max-today', 'Ngày cấp không được là ngày trong tương lai', (value) => {
-          const issueDate = parseDateValue(value);
-          if (!issueDate) return false;
-          return issueDate <= new Date();
-        });
-    }),
-  noiCap: yup.string()
     .nullable()
-    .transform((value) => {
-      if (value === '' || value === undefined) {
+    .test('cccd-format', 'CMND/CCCD phải có 9-12 chữ số', (value) => {
+      if (!value) return true;
+      return /^\d{9,12}$/.test(value);
+    }),
+  ngayCap: yup.string()
+    .transform((value, originalValue) => {
+      if (originalValue === '' || originalValue === undefined || originalValue === null) {
         return null;
       }
-      return typeof value === 'string' ? value.trim() : value;
+      return typeof originalValue === 'string' ? originalValue.trim() : originalValue;
     })
-    .when('ngaySinh', (ngaySinh, schema) => {
-      if (!ngaySinh) return schema;
-      const age = calculateAge(ngaySinh);
-      if (age < MIN_CCCD_AGE) {
-        return schema.test('under-14-no-issuer', 'Người dưới 14 tuổi không có nơi cấp CMND/CCCD', (value) => value === null);
-      }
-      return schema.required('Người từ 14 tuổi trở lên phải có nơi cấp CMND/CCCD');
+    .nullable()
+    .test('ngayCap-format', 'Ngày cấp không hợp lệ (YYYY-MM-DD)', (value) => {
+      if (!value) return true;
+      return DATE_REG_EXP.test(value);
+    })
+    .test('ngayCap-not-future', 'Ngày cấp không được là ngày trong tương lai', (value) => {
+      if (!value || !DATE_REG_EXP.test(value)) return true;
+      return new Date(value) <= new Date();
     }),
-  quanHeChuHo: yup.string().required('Vui lòng nhập quan hệ với chủ hộ'),
-  ghiChu: yup.string()
+  noiCap: optionalStringSchema,
+  quanHeChuHo: requiredTrimmedString('Vui lòng chọn quan hệ với chủ hộ'),
+  ghiChu: optionalStringSchema
 });
 
 const genderOptions = [
   { value: 'Nam', label: 'Nam' },
-  { value: 'Nữ', label: 'Nữ' }
+  { value: 'Nữ', label: 'Nữ' },
+  { value: 'Khác', label: 'Khác' }
 ];
 
 const relationshipOptions = [
@@ -190,7 +176,14 @@ const relationshipOptions = [
   { value: 'Khác', label: 'Khác' }
 ];
 
-export const CitizenForm = ({ initialValues = null, onSubmit }) => {
+export const CitizenForm = ({
+  initialValues = null,
+  onSubmit,
+  formId,
+  showActions = true,
+  onCancel,
+  submitLabel = 'Lưu thay đổi'
+}) => {
   const [submitError, setSubmitError] = useState(null);
   const [households, setHouseholds] = useState([]);
   
@@ -246,6 +239,7 @@ export const CitizenForm = ({ initialValues = null, onSubmit }) => {
   }, [age, setValue]);
 
   const onSubmitHandler = async (formValues) => {
+    console.log('CITIZEN_FORM_VALUES', formValues);
     setSubmitError(null);
 
     const normalizedNgaySinh = formatDateForApi(formValues.ngaySinh);
@@ -272,13 +266,13 @@ export const CitizenForm = ({ initialValues = null, onSubmit }) => {
       quocTich: trimString(formValues.quocTich) || '',
       ngheNghiep: trimString(formValues.ngheNghiep) || '',
       quanHeChuHo: trimString(formValues.quanHeChuHo) || '',
-      ghiChu: trimString(formValues.ghiChu) || ''
+      ghiChu: trimToNull(formValues.ghiChu)
     };
 
-    if (currentAge >= 14) {
-      payload.cmndCccd = trimString(formValues.cmndCccd) || null;
+    if (currentAge >= MIN_CCCD_AGE) {
+      payload.cmndCccd = trimToNull(formValues.cmndCccd);
       payload.ngayCap = formatDateForApi(formValues.ngayCap);
-      payload.noiCap = trimString(formValues.noiCap) || null;
+      payload.noiCap = trimToNull(formValues.noiCap);
     } else {
       payload.cmndCccd = null;
       payload.ngayCap = null;
@@ -293,8 +287,16 @@ export const CitizenForm = ({ initialValues = null, onSubmit }) => {
     }
   };
 
+  const handleCancel = () => {
+    if (onCancel) {
+      onCancel();
+    } else {
+      window.history.back();
+    }
+  };
+
   return (
-    <form onSubmit={handleSubmit(onSubmitHandler)} className="space-y-6">
+    <form id={formId} onSubmit={handleSubmit(onSubmitHandler)} className="space-y-6">
       {submitError && (
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2">
           <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
@@ -474,29 +476,31 @@ export const CitizenForm = ({ initialValues = null, onSubmit }) => {
       </div>
 
       {/* Action buttons */}
-      <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-        <button
-          type="button"
-          onClick={() => window.history.back()}
-          className="px-6 py-2.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
-        >
-          Hủy
-        </button>
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className={`px-6 py-2.5 rounded-lg transition-colors font-medium flex items-center gap-2 ${
-            isSubmitting 
-              ? 'bg-gray-400 text-gray-200 cursor-not-allowed' 
-              : 'bg-blue-600 text-white hover:bg-blue-700'
-          }`}
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
-          {isSubmitting ? 'Đang lưu...' : 'Lưu thay đổi'}
-        </button>
-      </div>
+      {showActions && (
+        <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+          <button
+            type="button"
+            onClick={handleCancel}
+            className="px-6 py-2.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
+          >
+            Hủy
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className={`px-6 py-2.5 rounded-lg transition-colors font-medium flex items-center gap-2 ${
+              isSubmitting 
+                ? 'bg-gray-400 text-gray-200 cursor-not-allowed' 
+                : 'bg-blue-600 text-white hover:bg-blue-700'
+            }`}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            {isSubmitting ? 'Đang lưu...' : submitLabel}
+          </button>
+        </div>
+      )}
     </form>
   );
 };

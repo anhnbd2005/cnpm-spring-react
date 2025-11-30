@@ -61,12 +61,32 @@ const StatisticsOverview = () => {
         
         const feePeriods = feePeriodsResponse || [];
         const feeCollections = feeCollectionsResponse || [];
-        
-        const totalCollected = feeCollections.reduce((sum, record) => {
-          return sum + (record.trangThai === 'DA_NOP' ? (record.tongPhi || 0) : 0);
-        }, 0);
-        const totalExpected = feeCollections.reduce((sum, f) => sum + (f.tongPhi || 0), 0);
-        const completionRate = totalExpected > 0 ? ((totalCollected / totalExpected) * 100).toFixed(1) : 0;
+
+        const isVoluntaryRecord = (record) => record?.loaiThuPhi === 'TU_NGUYEN';
+        const getMandatoryAmount = (record) => record?.tongPhi || 0;
+        const getVoluntaryAmount = (record) => record?.tongPhiTuNguyen || 0;
+
+        const totalMandatoryCollected = feeCollections.reduce((sum, record) => (
+          !isVoluntaryRecord(record) && record.trangThai === 'DA_NOP'
+            ? sum + getMandatoryAmount(record)
+            : sum
+        ), 0);
+
+        const totalMandatoryExpected = feeCollections.reduce((sum, record) => (
+          isVoluntaryRecord(record)
+            ? sum
+            : sum + getMandatoryAmount(record)
+        ), 0);
+
+        const totalVoluntary = feeCollections.reduce((sum, record) => (
+          isVoluntaryRecord(record)
+            ? sum + getVoluntaryAmount(record)
+            : sum
+        ), 0);
+
+        const totalCollected = totalMandatoryCollected + totalVoluntary;
+        const totalExpected = totalMandatoryExpected;
+        const completionRate = totalExpected > 0 ? ((totalMandatoryCollected / totalExpected) * 100).toFixed(1) : 0;
         
         // Outstanding households (status = CHUA_NOP)
         const outstanding = feeCollections.filter((f) => f.trangThai === 'CHUA_NOP');
@@ -83,8 +103,12 @@ const StatisticsOverview = () => {
               expected: 0
             };
           }
-          collectionsByPeriod[periodId].collected += (fc.trangThai === 'DA_NOP' ? (fc.tongPhi || 0) : 0);
-          collectionsByPeriod[periodId].expected += (fc.tongPhi || 0);
+          if (isVoluntaryRecord(fc)) {
+            collectionsByPeriod[periodId].voluntary = (collectionsByPeriod[periodId].voluntary || 0) + getVoluntaryAmount(fc);
+          } else {
+            collectionsByPeriod[periodId].collected += (fc.trangThai === 'DA_NOP' ? getMandatoryAmount(fc) : 0);
+            collectionsByPeriod[periodId].expected += getMandatoryAmount(fc);
+          }
         });
 
         setStats({
@@ -101,6 +125,9 @@ const StatisticsOverview = () => {
           fees: {
             totalCollected,
             totalExpected,
+            totalVoluntary,
+            totalMandatoryCollected,
+            totalMandatoryExpected,
             completionRate,
             outstanding,
             byPeriod: Object.values(collectionsByPeriod)
@@ -297,6 +324,9 @@ const StatisticsOverview = () => {
             <div className="text-2xl font-bold">
               {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(fees?.totalCollected || 0)}
             </div>
+            <div className="text-xs text-green-100 mt-2">
+              Trong đó tự nguyện: {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(fees?.totalVoluntary || 0)}
+            </div>
           </div>
           
           <div className="bg-white rounded-lg shadow-lg p-6 border-l-4 border-green-500">
@@ -323,7 +353,10 @@ const StatisticsOverview = () => {
             <h3 className="text-lg font-semibold text-gray-700 mb-4">Thu phí theo đợt</h3>
             <div className="space-y-3">
               {fees.byPeriod.map((period, index) => {
-                const percentage = period.expected > 0 ? (period.collected / period.expected) * 100 : 0;
+                const isVoluntaryPeriod = (period.expected || 0) === 0 && (period.voluntary || 0) > 0;
+                const collectedAmount = isVoluntaryPeriod ? (period.voluntary || 0) : (period.collected || 0);
+                const expectedAmount = isVoluntaryPeriod ? (period.voluntary || 0) : (period.expected || 0);
+                const percentage = expectedAmount > 0 ? (collectedAmount / expectedAmount) * 100 : (isVoluntaryPeriod ? 100 : 0);
                 return (
                   <div key={index} className="border border-gray-200 rounded-lg p-4">
                     <div className="flex items-center justify-between mb-2">
@@ -332,13 +365,13 @@ const StatisticsOverview = () => {
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
                       <div 
-                        className="bg-green-500 h-full rounded-full transition-all"
+                        className={`${isVoluntaryPeriod ? 'bg-purple-500' : 'bg-green-500'} h-full rounded-full transition-all`}
                         style={{ width: `${Math.min(percentage, 100)}%` }}
                       ></div>
                     </div>
                     <div className="flex items-center justify-between mt-2 text-sm text-gray-600">
-                      <span>Đã thu: {new Intl.NumberFormat('vi-VN').format(period.collected)} ₫</span>
-                      <span>Phải thu: {new Intl.NumberFormat('vi-VN').format(period.expected)} ₫</span>
+                      <span>{isVoluntaryPeriod ? 'Đóng góp' : 'Đã thu'}: {new Intl.NumberFormat('vi-VN').format(collectedAmount)} ₫</span>
+                      <span>{isVoluntaryPeriod ? 'Tổng đóng góp' : 'Phải thu'}: {new Intl.NumberFormat('vi-VN').format(expectedAmount)} ₫</span>
                     </div>
                   </div>
                 );

@@ -1,15 +1,28 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 
-const schema = yup.object().shape({
-  soHoKhau: yup.string().required('Vui lòng nhập số hộ khẩu').min(3, 'Số hộ khẩu phải có ít nhất 3 ký tự'),
-  tenChuHo: yup.string().required('Vui lòng nhập tên chủ hộ').min(3, 'Tên chủ hộ phải có ít nhất 3 ký tự'),
-  diaChi: yup.string().required('Vui lòng nhập địa chỉ')
+const householdSchema = yup.object().shape({
+  soHoKhau: yup.string()
+    .trim()
+    .when('$isEditing', {
+      is: true,
+      then: (schema) => schema.optional(),
+      otherwise: (schema) => schema.required('Vui lòng nhập số hộ khẩu')
+    }),
+  tenChuHo: yup.string().trim().required('Vui lòng nhập tên chủ hộ'),
+  diaChi: yup.string().trim().required('Vui lòng nhập địa chỉ')
 });
 
-export const HouseholdForm = ({ initialValues, onSubmit }) => {
+export const HouseholdForm = ({
+  initialValues,
+  onSubmit,
+  formId,
+  showActions = true,
+  onCancel,
+  submitLabel = 'Lưu thay đổi'
+}) => {
   const DEFAULT_VALUES = {
     soHoKhau: '',
     tenChuHo: '',
@@ -17,8 +30,13 @@ export const HouseholdForm = ({ initialValues, onSubmit }) => {
   };
   const isEditing = Boolean(initialValues?.id);
 
+  const resolver = useMemo(
+    () => yupResolver(householdSchema, undefined, { context: { isEditing } }),
+    [isEditing]
+  );
+
   const { register, handleSubmit, reset, formState: { errors } } = useForm({
-    resolver: yupResolver(schema),
+    resolver,
     defaultValues: DEFAULT_VALUES
   });
 
@@ -31,19 +49,24 @@ export const HouseholdForm = ({ initialValues, onSubmit }) => {
   }, [initialValues?.id, initialValues?.soHoKhau, initialValues?.tenChuHo, initialValues?.diaChi, reset]);
 
   const handleFormSubmit = (values) => {
+    console.log('HOUSEHOLD_FORM_VALUES', values);
     const payload = {
-      soHoKhau: values.soHoKhau?.trim() || '',
       tenChuHo: values.tenChuHo?.trim() || '',
       diaChi: values.diaChi?.trim() || ''
     };
+
+    if (!isEditing) {
+      payload.soHoKhau = values.soHoKhau?.trim() || '';
+    }
+
     onSubmit(payload);
   };
 
   return (
-    <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
+    <form id={formId} onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
       <div>
         <label className="block text-sm font-medium text-gray-700">
-          Số hộ khẩu <span className="text-red-500">*</span>
+          Số hộ khẩu {!isEditing && <span className="text-red-500">*</span>}
         </label>
         <input
           type="text"
@@ -90,14 +113,25 @@ export const HouseholdForm = ({ initialValues, onSubmit }) => {
         )}
       </div>
 
-      <div className="flex justify-end space-x-4">
-        <button
-          type="submit"
-          className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
-        >
-          Lưu thay đổi
-        </button>
-      </div>
+      {showActions && (
+        <div className="flex justify-end space-x-4">
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+            >
+              Hủy
+            </button>
+          )}
+          <button
+            type="submit"
+            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+          >
+            {submitLabel}
+          </button>
+        </div>
+      )}
     </form>
   );
 };
