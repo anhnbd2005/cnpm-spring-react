@@ -6,12 +6,11 @@ import com.example.QuanLyDanCu.dto.request.NhanKhauUpdateDto;
 import com.example.QuanLyDanCu.dto.response.NhanKhauResponseDto;
 import com.example.QuanLyDanCu.entity.NhanKhau;
 import com.example.QuanLyDanCu.enums.BienDongType;
-import com.example.QuanLyDanCu.event.ChangeOperation;
-import com.example.QuanLyDanCu.event.NhanKhauChangedEvent;
+import com.example.QuanLyDanCu.exception.BadRequestException;
+import com.example.QuanLyDanCu.exception.BusinessException;
+import com.example.QuanLyDanCu.exception.NotFoundException;
 import com.example.QuanLyDanCu.repository.NhanKhauRepository;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,12 +24,11 @@ import java.time.LocalDate;
 
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class NhanKhauService {
 
     private final NhanKhauRepository nhanKhauRepo;
     private final BienDongService bienDongService;
-    private final ApplicationEventPublisher eventPublisher;
+    private final ThuPhiHoKhauService thuPhiHoKhauService;
 
     // ========== DTO-based methods ==========
 
@@ -44,7 +42,7 @@ public class NhanKhauService {
     // Lấy nhân khẩu theo id (DTO)
     public NhanKhauResponseDto getById(Long id) {
         NhanKhau nk = nhanKhauRepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy nhân khẩu id = " + id));
+            .orElseThrow(() -> new NotFoundException("Không tìm thấy nhân khẩu id = " + id));
         return toResponseDTO(nk);
     }
 
@@ -71,17 +69,13 @@ public class NhanKhauService {
 
         NhanKhau saved = nhanKhauRepo.save(nk);
         
-        // Publish event to trigger ThuPhiHoKhau recalculation
-        log.info("Publishing NhanKhauChangedEvent for newly created citizen: {} in household: {}", 
-                 saved.getId(), saved.getHoKhauId());
-        eventPublisher.publishEvent(new NhanKhauChangedEvent(this, saved.getId(), 
-                                     saved.getHoKhauId(), ChangeOperation.CREATE));
-
         bienDongService.log(
             BienDongType.THAY_DOI_THONG_TIN,
             "Tạo nhân khẩu mới: " + saved.getHoTen(),
             saved.getHoKhauId(),
             saved.getId());
+
+        triggerFeeRecalculation(saved.getHoKhauId());
         
         return toResponseDTO(saved);
     }
@@ -91,7 +85,8 @@ public class NhanKhauService {
     public NhanKhauResponseDto update(Long id, NhanKhauUpdateDto dto, Authentication auth) {
 
         NhanKhau existing = nhanKhauRepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy nhân khẩu id = " + id));
+            .orElseThrow(() -> new NotFoundException("Không tìm thấy nhân khẩu id = " + id));
+        Long oldHoKhauId = existing.getHoKhauId();
 
         boolean changed = false;
         List<Consumer<NhanKhau>> pendingLogs = new ArrayList<>();
@@ -184,7 +179,6 @@ public class NhanKhauService {
             addChangeLog(pendingLogs, "ghi chú", oldVal, newVal);
         }
         if (dto.getHoKhauId() != null && !Objects.equals(existing.getHoKhauId(), dto.getHoKhauId())) {
-            Long oldHoKhauId = existing.getHoKhauId();
             Long newHoKhauId = dto.getHoKhauId();
             existing.setHoKhauId(newHoKhauId);
             changed = true;
@@ -202,19 +196,18 @@ public class NhanKhauService {
         }
 
         if (!changed) {
-            throw new RuntimeException("Không có gì để thay đổi!");
+            throw new BusinessException("Không có gì để thay đổi");
         }
 
         NhanKhau saved = nhanKhauRepo.save(existing);
 
         pendingLogs.forEach(callback -> callback.accept(saved));
-        
-        // Publish event to trigger ThuPhiHoKhau recalculation
-        log.info("Publishing NhanKhauChangedEvent for updated citizen: {} in household: {}", 
-                 saved.getId(), saved.getHoKhauId());
-        eventPublisher.publishEvent(new NhanKhauChangedEvent(this, saved.getId(), 
-                                     saved.getHoKhauId(), ChangeOperation.UPDATE));
-        
+
+        if (!Objects.equals(oldHoKhauId, saved.getHoKhauId())) {
+            triggerFeeRecalculation(oldHoKhauId);
+        }
+        triggerFeeRecalculation(saved.getHoKhauId());
+
         return toResponseDTO(saved);
     }
 
@@ -223,7 +216,7 @@ public class NhanKhauService {
     public void delete(Long id, Authentication auth) {
 
         NhanKhau nk = nhanKhauRepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy nhân khẩu id = " + id));
+            .orElseThrow(() -> new NotFoundException("Không tìm thấy nhân khẩu id = " + id));
         
         Long hoKhauId = nk.getHoKhauId();
 
@@ -235,19 +228,18 @@ public class NhanKhauService {
             : "Xóa nhân khẩu " + nk.getHoTen();
         bienDongService.log(deletionType, content, hoKhauId, null);
         
-        // Publish event BEFORE deletion to trigger ThuPhiHoKhau recalculation
-        log.info("Publishing NhanKhauChangedEvent for citizen deletion: {} in household: {}", id, hoKhauId);
-        eventPublisher.publishEvent(new NhanKhauChangedEvent(this, id, hoKhauId, ChangeOperation.DELETE));
-        
         nhanKhauRepo.delete(nk);
+        triggerFeeRecalculation(hoKhauId);
     }
 
     // --- TẠM TRÚ ---
     public NhanKhauResponseDto dangKyTamTru(Long id, DangKyTamTruTamVangRequestDto dto, Authentication auth) {
-        if (!dto.getNgayBatDau().isBefore(dto.getNgayKetThuc()))
-            throw new IllegalArgumentException("Ngày bắt đầu phải bé hơn ngày kết thúc");
+        if (!dto.getNgayBatDau().isBefore(dto.getNgayKetThuc())) {
+            throw new BadRequestException("Ngày bắt đầu phải bé hơn ngày kết thúc");
+        }
 
-        NhanKhau nk = nhanKhauRepo.findById(id).orElseThrow(() -> new RuntimeException("Không tìm thấy nhân khẩu"));
+        NhanKhau nk = nhanKhauRepo.findById(id)
+            .orElseThrow(() -> new NotFoundException("Không tìm thấy nhân khẩu"));
 
         nk.setTamTruTu(dto.getNgayBatDau());
         nk.setTamTruDen(dto.getNgayKetThuc());
@@ -260,17 +252,12 @@ public class NhanKhauService {
 
         NhanKhau saved = nhanKhauRepo.save(nk);
 
-        log.info("Publishing NhanKhauChangedEvent for tam_tru registration: {} in household: {}",
-                saved.getId(), saved.getHoKhauId());
-        eventPublisher.publishEvent(new NhanKhauChangedEvent(this, saved.getId(),
-                saved.getHoKhauId(), ChangeOperation.UPDATE));
-
         return toResponseDTO(saved);
     }
 
     public void huyTamTru(Long id, Authentication auth) {
         NhanKhau existing = nhanKhauRepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy nhân khẩu id = " + id));
+            .orElseThrow(() -> new NotFoundException("Không tìm thấy nhân khẩu id = " + id));
         existing.setTamTruTu(null);
         existing.setTamTruDen(null);
 
@@ -279,21 +266,19 @@ public class NhanKhauService {
             "Hủy tạm trú cho " + existing.getHoTen(),
             existing.getHoKhauId(),
             existing.getId());
-        NhanKhau saved = nhanKhauRepo.save(existing);
+        nhanKhauRepo.save(existing);
 
-        log.info("Publishing NhanKhauChangedEvent for tam_tru cancellation: {} in household: {}",
-                saved.getId(), saved.getHoKhauId());
-        eventPublisher.publishEvent(new NhanKhauChangedEvent(this, saved.getId(),
-                saved.getHoKhauId(), ChangeOperation.UPDATE));
     }
 
 
     // --- TẠM VẮNG ---
     public NhanKhauResponseDto dangKyTamVang(Long id, DangKyTamTruTamVangRequestDto dto, Authentication auth) {
-        if (!dto.getNgayBatDau().isBefore(dto.getNgayKetThuc()))
-            throw new IllegalArgumentException("Ngày bắt đầu phải bé hơn ngày kết thúc");
+        if (!dto.getNgayBatDau().isBefore(dto.getNgayKetThuc())) {
+            throw new BadRequestException("Ngày bắt đầu phải bé hơn ngày kết thúc");
+        }
 
-        NhanKhau nk = nhanKhauRepo.findById(id).orElseThrow(() -> new RuntimeException("Không tìm thấy nhân khẩu"));
+        NhanKhau nk = nhanKhauRepo.findById(id)
+            .orElseThrow(() -> new NotFoundException("Không tìm thấy nhân khẩu"));
 
         nk.setTamVangTu(dto.getNgayBatDau());
         nk.setTamVangDen(dto.getNgayKetThuc());
@@ -305,19 +290,15 @@ public class NhanKhauService {
         bienDongService.log(BienDongType.TAM_VANG, content, nk.getHoKhauId(), nk.getId());
 
         NhanKhau saved = nhanKhauRepo.save(nk);
-        
-        // Publish event because tam_vang affects fee calculation
-        log.info("Publishing NhanKhauChangedEvent for tam_vang registration: {} in household: {}", 
-                 saved.getId(), saved.getHoKhauId());
-        eventPublisher.publishEvent(new NhanKhauChangedEvent(this, saved.getId(), 
-                                     saved.getHoKhauId(), ChangeOperation.UPDATE));
-        
+
+        triggerFeeRecalculation(saved.getHoKhauId());
+
         return toResponseDTO(saved);
     }
 
     public void huyTamVang(Long id, Authentication auth) {
         NhanKhau existing = nhanKhauRepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy nhân khẩu id = " + id));
+            .orElseThrow(() -> new NotFoundException("Không tìm thấy nhân khẩu id = " + id));
         existing.setTamVangTu(null);
         existing.setTamVangDen(null);
 
@@ -327,17 +308,13 @@ public class NhanKhauService {
             existing.getHoKhauId(),
             existing.getId());
         nhanKhauRepo.save(existing);
-        
-        // Publish event because tam_vang affects fee calculation
-        log.info("Publishing NhanKhauChangedEvent for tam_vang cancellation: {} in household: {}", 
-                 existing.getId(), existing.getHoKhauId());
-        eventPublisher.publishEvent(new NhanKhauChangedEvent(this, existing.getId(), 
-                                     existing.getHoKhauId(), ChangeOperation.UPDATE));
+        triggerFeeRecalculation(existing.getHoKhauId());
     }
 
     // --- KHAI TỬ ---
     public NhanKhauResponseDto khaiTu(Long id, String lyDo, Authentication auth) {
-        NhanKhau nk = nhanKhauRepo.findById(id).orElseThrow(() -> new RuntimeException("Không tìm thấy nhân khẩu"));
+        NhanKhau nk = nhanKhauRepo.findById(id)
+            .orElseThrow(() -> new NotFoundException("Không tìm thấy nhân khẩu"));
 
         nk.setGhiChu("Đã mất");
         nk.setTamTruTu(null);
@@ -349,11 +326,6 @@ public class NhanKhauService {
         bienDongService.log(BienDongType.KHAI_TU, content, nk.getHoKhauId(), nk.getId());
 
         NhanKhau saved = nhanKhauRepo.save(nk);
-
-        log.info("Publishing NhanKhauChangedEvent for citizen death declaration: {} in household: {}",
-                saved.getId(), saved.getHoKhauId());
-        eventPublisher.publishEvent(new NhanKhauChangedEvent(this, saved.getId(),
-                saved.getHoKhauId(), ChangeOperation.UPDATE));
 
         return toResponseDTO(saved);
     }
@@ -436,6 +408,13 @@ public class NhanKhauService {
         return out;
     }
 
+    private void triggerFeeRecalculation(Long hoKhauId) {
+        if (hoKhauId == null) {
+            return;
+        }
+        thuPhiHoKhauService.recalculateForHousehold(hoKhauId);
+    }
+
     // Lấy tất cả nhân khẩu theo ID hộ khẩu (DTO)
     public List<NhanKhauResponseDto> getAllByHoKhauId(Long id) {
         if (id == null) {
@@ -475,7 +454,7 @@ public class NhanKhauService {
      */
     private void validateCccdByAge(LocalDate ngaySinh, String cmndCccd, LocalDate ngayCap, String noiCap) {
         if (ngaySinh == null) {
-            throw new IllegalArgumentException("Ngày sinh không được để trống");
+            throw new BadRequestException("Ngày sinh không được để trống");
         }
 
         LocalDate today = LocalDate.now();
@@ -488,7 +467,7 @@ public class NhanKhauService {
         if (age < 14) {
             // Under 14: CCCD fields must be empty
             if (hasCccdData) {
-                throw new IllegalArgumentException(
+                throw new BadRequestException(
                     "Người dưới 14 tuổi không được cấp CMND/CCCD. " +
                     "Vui lòng để trống các trường: CMND/CCCD, Ngày cấp, Nơi cấp"
                 );
@@ -496,24 +475,24 @@ public class NhanKhauService {
         } else {
             // Age >= 14: All CCCD fields required
             if (cmndCccd == null || cmndCccd.trim().isEmpty()) {
-                throw new IllegalArgumentException("Người từ 14 tuổi trở lên phải có CMND/CCCD");
+                throw new BadRequestException("Người từ 14 tuổi trở lên phải có CMND/CCCD");
             }
             if (ngayCap == null) {
-                throw new IllegalArgumentException("Người từ 14 tuổi trở lên phải có ngày cấp CMND/CCCD");
+                throw new BadRequestException("Người từ 14 tuổi trở lên phải có ngày cấp CMND/CCCD");
             }
             if (noiCap == null || noiCap.trim().isEmpty()) {
-                throw new IllegalArgumentException("Người từ 14 tuổi trở lên phải có nơi cấp CMND/CCCD");
+                throw new BadRequestException("Người từ 14 tuổi trở lên phải có nơi cấp CMND/CCCD");
             }
             
             // Validate CMND/CCCD format (9-12 digits)
             if (!cmndCccd.matches("\\d{9,12}")) {
-                throw new IllegalArgumentException("CMND/CCCD phải có 9-12 chữ số");
+                throw new BadRequestException("CMND/CCCD phải có 9-12 chữ số");
             }
             
             // Validate ngayCap >= ngaySinh + 14 years
             LocalDate minIssuanceDate = ngaySinh.plusYears(14);
             if (ngayCap.isBefore(minIssuanceDate)) {
-                throw new IllegalArgumentException(
+                throw new BadRequestException(
                     "Ngày cấp CMND/CCCD phải sau ngày sinh ít nhất 14 năm (từ " + 
                     minIssuanceDate + " trở đi)"
                 );
@@ -521,7 +500,7 @@ public class NhanKhauService {
             
             // Validate ngayCap <= today
             if (ngayCap.isAfter(today)) {
-                throw new IllegalArgumentException("Ngày cấp CMND/CCCD không được là ngày trong tương lai");
+                throw new BadRequestException("Ngày cấp CMND/CCCD không được là ngày trong tương lai");
             }
         }
     }

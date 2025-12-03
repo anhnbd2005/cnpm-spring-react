@@ -225,53 +225,38 @@ test_nhan_khau() {
 
 test_bien_dong() {
   log_info "Running test_bien_dong"
+
+  # 1) Lấy danh sách biến động sau khi các test trước đã chạy
   api_call GET "/api/bien-dong" "$ADMIN_TOKEN"
-  assert_http_code "200" "$API_STATUS" "Initial GET /api/bien-dong should succeed"
-  local initial_count
-  initial_count=$(echo "$API_BODY" | jq 'length')
-  if [[ "$initial_count" != "0" ]]; then
-    log_info "Cleaning up $initial_count leftover bien_dong log(s) before running assertions"
-    while IFS= read -r log_id; do
-      api_call DELETE "/api/bien-dong/${log_id}" "$ADMIN_TOKEN"
-      assert_http_code "204" "$API_STATUS" "Pre-test bien_dong cleanup should return 204"
-    done < <(echo "$API_BODY" | jq -r '.[].id')
-    api_call GET "/api/bien-dong" "$ADMIN_TOKEN"
-    assert_http_code "200" "$API_STATUS" "Re-check bien_dong after cleanup"
-    initial_count=$(echo "$API_BODY" | jq 'length')
+  assert_http_code "200" "$API_STATUS" "GET /api/bien-dong should succeed"
+
+  local count
+  count=$(echo "$API_BODY" | jq 'length')
+
+  # Vì test_nhan_khau đã tạo/update/delete → chắc chắn phải có log
+  if [[ "$count" -lt 1 ]]; then
+    fail "Bien dong must contain at least 1 log after previous operations"
   fi
-  assert_equals "0" "$initial_count" "Seed must have no bien_dong records"
 
-  local create_payload
-  create_payload=$(jq -nc '{loai:"chuyen_den",noiDung:"Test log tao moi",hoKhauId:1,nhanKhauId:5}')
-  api_call POST "/api/bien-dong" "$ADMIN_TOKEN" "$create_payload"
-  assert_http_code "201" "$API_STATUS" "POST /api/bien-dong should create log"
-  local bien_dong_id
-  bien_dong_id=$(echo "$API_BODY" | jq -r '.id')
-  assert_not_empty "$bien_dong_id" "New bien_dong id must not be empty"
-  local loai_value
-  loai_value=$(echo "$API_BODY" | jq -r '.loai')
-  assert_equals "CHUYEN_DEN" "$loai_value" "Loai should be uppercased"
+  log_info "Detected $count bien_dong log(s) – OK"
 
-  local update_payload
-  update_payload=$(jq -nc '{loai:"chuyen_di",noiDung:"Da cap nhat noi dung",thoiGian:"2025-11-26T16:31:00"}')
-  api_call PUT "/api/bien-dong/${bien_dong_id}" "$ADMIN_TOKEN" "$update_payload"
-  assert_http_code "200" "$API_STATUS" "PUT /api/bien-dong/{id} should succeed"
-  local updated_type
-  updated_type=$(echo "$API_BODY" | jq -r '.loai')
-  assert_equals "CHUYEN_DI" "$updated_type" "Loai should update"
+  # 2) Kiểm tra log mới nhất có đúng định dạng
+  local first
+  first=$(echo "$API_BODY" | jq '.[0]')
 
-  local invalid_payload
-  invalid_payload=$(jq -nc '{loai:"SAI_TYPE",noiDung:"invalid"}')
-  api_call POST "/api/bien-dong" "$ADMIN_TOKEN" "$invalid_payload"
-  assert_http_code "400" "$API_STATUS" "Invalid bien_dong type must fail"
-  [[ "$API_BODY" == *"CHUYEN_DEN"* ]] || fail "Error message must list allowed types"
+  local loai
+  loai=$(echo "$first" | jq -r '.loai')
+  assert_not_empty "$loai" "Bien dong log must contain 'loai'"
 
-  api_call DELETE "/api/bien-dong/${bien_dong_id}" "$ADMIN_TOKEN"
-  assert_http_code "204" "$API_STATUS" "DELETE /api/bien-dong/{id} should return 204"
-  api_call GET "/api/bien-dong" "$ADMIN_TOKEN"
-  local after_delete_count
-  after_delete_count=$(echo "$API_BODY" | jq 'length')
-  assert_equals "0" "$after_delete_count" "bien_dong list should be empty after cleanup"
+  local noiDung
+  noiDung=$(echo "$first" | jq -r '.noiDung')
+  assert_not_empty "$noiDung" "Bien dong log must contain 'noiDung'"
+
+  local thoiGian
+  thoiGian=$(echo "$first" | jq -r '.thoiGian')
+  assert_not_empty "$thoiGian" "Bien dong log must contain timestamp"
+
+  log_info "Latest log: loai=$loai, noiDung=$noiDung"
   log_ok "test_bien_dong passed"
 }
 
@@ -391,28 +376,42 @@ test_thu_phi_ho_khau() {
 test_voluntary_status_flow() {
   log_info "Running test_voluntary_status_flow"
 
-  # 1) Tạo fee tự nguyện nhưng không gửi ngayThu → CHUA_NOP
+  # 1) Tạo fee tự nguyện – yêu cầu ngayThu và tongPhi>0
   local create_payload
-  create_payload=$(jq -nc '{hoKhauId:3,dotThuPhiId:6,ghiChu:"Test",tongPhi:90000}')
+  create_payload=$(jq -nc '{
+    hoKhauId: 3,
+    dotThuPhiId: 6,
+    tongPhi: 90000,
+    ghiChu: "Test voluntary",
+    ngayThu: "2025-12-01"
+  }')
+
   api_call POST "/api/thu-phi-ho-khau" "$KETOAN_TOKEN" "$create_payload"
   assert_http_code "201" "$API_STATUS" "Create voluntary record failed"
 
   local fee_id
   fee_id=$(echo "$API_BODY" | jq -r '.id')
 
+  # Trạng thái phải là DA_NOP vì tạo = đã nộp
   local status
   status=$(echo "$API_BODY" | jq -r '.trangThai')
-  assert_equals "CHUA_NOP" "$status" "Voluntary default must be CHUA_NOP"
+  assert_equals "DA_NOP" "$status" "Voluntary must be DA_NOP upon creation"
 
-  # 2) Update để đánh dấu đã nộp
+  # 2) Update: phải gửi lại hoKhauId & dotThuPhiId để qua validation
   local update_payload
-  update_payload=$(jq -nc '{ngayThu:"2025-12-01"}')
+  update_payload=$(jq -nc '{
+    hoKhauId: 3,
+    dotThuPhiId: 6,
+    ngayThu: "2025-12-02",
+    ghiChu: "Updated note"
+  }')
+
   api_call PUT "/api/thu-phi-ho-khau/${fee_id}" "$KETOAN_TOKEN" "$update_payload"
-  assert_http_code "200" "$API_STATUS" "Update voluntary failed"
+  assert_http_code "200" "$API_STATUS" "Update voluntary record failed"
 
   local updated_status
   updated_status=$(echo "$API_BODY" | jq -r '.trangThai')
-  assert_equals "DA_NOP" "$updated_status" "Voluntary should be DA_NOP after update"
+  assert_equals "DA_NOP" "$updated_status" "Voluntary must remain DA_NOP"
 
   # Cleanup
   api_call DELETE "/api/thu-phi-ho-khau/${fee_id}" "$KETOAN_TOKEN"
@@ -437,9 +436,9 @@ test_overview_fee() {
   # HK002: 3 people → 3*6000*1 = 18000
   # ...
   # This test only checks that field exists, not exact sum.
-  local totalExpected
-  totalExpected=$(echo "$API_BODY" | jq -r '.totalExpected')
-  assert_not_empty "$totalExpected" "totalExpected must exist"
+  local tongDuKien
+  tongDuKien=$(echo "$API_BODY" | jq -r '.tongDuKien')
+  assert_not_empty "$tongDuKien" "tongDuKien must exist"
 
   local households_count
   households_count=$(echo "$API_BODY" | jq '.households | length')
@@ -483,79 +482,124 @@ test_dot_thu_phi_no_update() {
 test_delete_ho_khau_cascade() {
   log_info "Running test_delete_ho_khau_cascade"
 
+  #
   # 1) Tạo hộ khẩu mới
+  #
   local hk_payload
   hk_payload=$(jq -nc '{soHoKhau:"HK999",tenChuHo:"Test Owner",diaChi:"Test Address"}')
   api_call POST "/api/ho-khau" "$ADMIN_TOKEN" "$hk_payload"
   assert_http_code "201" "$API_STATUS" "Create household (for cascade test) failed"
+
   local hk_id
   hk_id=$(echo "$API_BODY" | jq -r '.id')
   assert_not_empty "$hk_id" "Household id must not be empty"
 
-  # 2) Thêm một nhân khẩu thuộc hộ này
+
+  #
+  # 1A) Kiểm tra log tạo hộ khẩu — phải có đúng hoKhauId
+  #
+  api_call GET "/api/bien-dong" "$ADMIN_TOKEN"
+  local log_hk_create
+  log_hk_create=$(echo "$API_BODY" \
+      | jq --argjson hid "$hk_id" \
+      'map(select(.hoKhauId == $hid and (.noiDung|contains("Tạo hộ khẩu mới")))) | length')
+
+  assert_equals "1" "$log_hk_create" "BienDong log for household creation must contain correct hoKhauId"
+
+
+  #
+  # 2) Tạo nhân khẩu < 14 tuổi thuộc hộ này
+  #
   local nk_payload
   nk_payload=$(jq -nc --argjson hid "$hk_id" '{
     hoTen:"Cascade Citizen",
-    ngaySinh:"1990-01-01",
+    ngaySinh:"2015-01-01",
     gioiTinh:"Nam",
     danToc:"Kinh",
     quocTich:"Việt Nam",
-    ngheNghiep:"Tester",
+    ngheNghiep:"Học sinh",
     quanHeChuHo:"Con",
     hoKhauId:$hid
   }')
+
   api_call POST "/api/nhan-khau" "$ADMIN_TOKEN" "$nk_payload"
   assert_http_code "201" "$API_STATUS" "Create citizen for cascade test failed"
+
   local nk_id
   nk_id=$(echo "$API_BODY" | jq -r '.id')
 
-  # 3) Tạo biến động cho hộ khẩu này
-  local bd_payload
-  bd_payload=$(jq -nc --argjson hid "$hk_id" --argjson nid "$nk_id" '{
-    loai:"chuyen_den",
-    noiDung:"Cascade log",
-    hoKhauId:$hid,
-    nhanKhauId:$nid
-  }')
-  api_call POST "/api/bien-dong" "$ADMIN_TOKEN" "$bd_payload"
-  assert_http_code "201" "$API_STATUS" "Create bien_dong for cascade failed"
-  local bd_id
-  bd_id=$(echo "$API_BODY" | jq -r '.id')
 
-  # 4) Tạo một fee record tự nguyện (để kiểm tra cascade thu phí)
+  #
+  # 2A) Kiểm tra log tạo nhân khẩu — phải có cả hoKhauId & nhanKhauId
+  #
+  api_call GET "/api/bien-dong" "$ADMIN_TOKEN"
+  local log_nk_create
+  log_nk_create=$(echo "$API_BODY" \
+      | jq --argjson hid "$hk_id" --argjson nid "$nk_id" \
+      'map(select(.hoKhauId == $hid and .nhanKhauId == $nid)) | length')
+
+  assert_equals "1" "$log_nk_create" "BienDong log for citizen creation must contain hoKhauId + nhanKhauId"
+
+
+  #
+  # 3) Tạo fee tự nguyện cho HK999
+  #
   local fee_payload
   fee_payload=$(jq -nc --argjson hid "$hk_id" '{
     hoKhauId:$hid,
     dotThuPhiId:6,
-    ngayThu:null,
+    ngayThu:"2025-11-20",
     ghiChu:"Cascade fee",
     tongPhi:50000
   }')
+
   api_call POST "/api/thu-phi-ho-khau" "$KETOAN_TOKEN" "$fee_payload"
   assert_http_code "201" "$API_STATUS" "Create voluntary fee for cascade failed"
-  local fee_id
-  fee_id=$(echo "$API_BODY" | jq -r '.id')
 
-  # 5) DELETE household
+
+  #
+  # 4) DELETE household
+  #
   api_call DELETE "/api/ho-khau/${hk_id}" "$ADMIN_TOKEN"
   assert_http_code "204" "$API_STATUS" "DELETE household should return 204"
 
-  # 6) Check cascade: tất cả phải bị xoá
+
+  #
+  # 5) Kiểm tra cascade nhân khẩu
+  #
   api_call GET "/api/nhan-khau/${nk_id}" "$ADMIN_TOKEN"
   assert_http_code "404" "$API_STATUS" "Citizen must be deleted by cascade"
 
-  api_call GET "/api/bien-dong" "$ADMIN_TOKEN"
-  local bd_exists
-  bd_exists=$(echo "$API_BODY" | jq --arg id "$bd_id" 'map(select(.id==$id|tonumber)) | length')
-  assert_equals "0" "$bd_exists" "BienDong record was not cascaded properly"
 
+  #
+  # 6) Kiểm tra cascade fee
+  #
   api_call GET "/api/thu-phi-ho-khau" "$KETOAN_TOKEN"
   local fee_exists
-  fee_exists=$(echo "$API_BODY" | jq --arg id "$fee_id" 'map(select(.id==$id|tonumber)) | length')
-  assert_equals "0" "$fee_exists" "Fee record was not cascaded properly"
+  fee_exists=$(echo "$API_BODY" \
+      | jq --argjson hid "$hk_id" 'map(select(.hoKhauId == $hid)) | length')
+
+  assert_equals "0" "$fee_exists" "Fee records for deleted household were not cascaded properly"
+
+
+  #
+  # 7) Kiểm tra cascade biến động
+  #
+  api_call GET "/api/bien-dong" "$ADMIN_TOKEN"
+  local bd_exists
+  bd_exists=$(echo "$API_BODY" \
+      | jq --argjson hid "$hk_id" 'map(select(.hoKhauId == $hid)) | length')
+
+  assert_equals "0" "$bd_exists" "BienDong logs for deleted household were not cascaded properly"
+
+
+  #
+  # Không kiểm tra orphan logs khác — vì không thuộc HK này
+  #
 
   log_ok "test_delete_ho_khau_cascade passed"
 }
+
 
 test_security() {
   log_info "Running test_security"

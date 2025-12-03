@@ -3,6 +3,9 @@ package com.example.QuanLyDanCu.entity;
 import com.example.QuanLyDanCu.enums.TrangThaiThuPhi;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
@@ -14,9 +17,17 @@ public class ThuPhiHoKhau {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "ho_khau_id", nullable = false)
-    private HoKhau hoKhau;
+        @ManyToOne(fetch = FetchType.LAZY)
+        @JoinColumn(
+            name = "ho_khau_id",
+            nullable = false,
+            foreignKey = @ForeignKey(
+                name = "fk_thu_phi_ho_khau_ho_khau",
+                foreignKeyDefinition = "FOREIGN KEY (ho_khau_id) REFERENCES ho_khau(id) ON DELETE CASCADE"
+            )
+        )
+        @OnDelete(action = OnDeleteAction.CASCADE)
+        private HoKhau hoKhau;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "dot_thu_phi_id", nullable = false)
@@ -32,17 +43,16 @@ public class ThuPhiHoKhau {
 
     /**
      * Tổng phí phải nộp (tính tự động)
-     * - Phí BAT_BUOC: dinh_muc * months * soNguoi (months calculated from period dates)
-     * - Phí TU_NGUYEN: Luôn = 0 (không bắt buộc, người dân tự nguyện đóng góp)
+     * - Phí BAT_BUOC: dinh_muc * soNguoi
+     * - Phí TU_NGUYEN: số tiền hộ tự đóng góp
      */
     @Column(name = "tong_phi", precision = 15, scale = 2)
     private BigDecimal tongPhi;
 
     /**
      * Trạng thái thu phí
-     * - CHUA_NOP: Phí BAT_BUOC chưa nộp (initial state)
-     * - DA_NOP: Phí BAT_BUOC đã nộp đủ (one-time full payment)
-     * - KHONG_AP_DUNG: Phí TU_NGUYEN (not applicable)
+     * - CHUA_NOP: Phí BAT_BUOC chưa nộp (được hiểu khi chưa có bản ghi)
+     * - DA_NOP: Phí BAT_BUOC đã nộp đủ hoặc khoản đóng góp đã ghi nhận
      */
     @Enumerated(EnumType.STRING)
     @Column(name = "trang_thai", length = 20)

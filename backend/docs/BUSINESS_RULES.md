@@ -18,11 +18,11 @@
 | Khu vực | Hành vi v1.0 | v2.0 (hiện tại) |
 |------|----------------|----------------|
 | Trường lược đồ | Các bảng lưu `created_by`, `updated_at`, `so_tien_da_thu`, v.v. | Mọi cột audit đã bị loại bỏ; chỉ giữ lại các cột quan trọng cho nghiệp vụ. |
-| Thanh toán phí | Cho phép nhiều khoản nộp từng phần trong một đợt thu. | Giờ chỉ có **một** bản ghi cho mỗi `(hoKhauId, dotThuPhiId)` thể hiện khoản thanh toán đầy đủ. |
-| Công thức phí | Cố định 12 tháng. | `tongPhi = dinh_muc x months_between_period x eligible_member_count`. |
-| Phí tự nguyện | Có thể chứa tổng tùy ý. | Luôn cưỡng chế `soNguoi = 0`, `tongPhi = 0`, `trangThai = KHONG_AP_DUNG`. |
+| Thanh toán phí | Cho phép nhiều khoản nộp từng phần trong một đợt thu. | Giờ chỉ có **một** bản ghi cho mỗi `(hoKhauId, dotThuPhiId)` thể hiện khoản thanh toán đầy đủ, chỉ lưu khi hộ đã nộp. |
+| Công thức phí | Cố định 12 tháng. | `tongPhi = soNguoi × dinh_muc × số_tháng` với `số_tháng` đếm từ `ngayBatDau` đến `ngayKetThuc` (bao gồm hai đầu mút). |
+| Phí tự nguyện | Có thể chứa tổng tùy ý. | Người dân nhập số tiền thực đóng góp, `soNguoi = 0`, trạng thái lưu `DA_NOP`. |
 | Đếm nhân khẩu | Tính mọi nhân khẩu trong hộ. | Loại thành viên có `tamVangDen >= today` tại thời điểm tính toán. |
-| Biến động | Đôi khi kích hoạt cập nhật dây chuyền. | Chỉ là nhật ký văn bản thuần; không bao giờ chỉnh sửa hộ hay nhân khẩu. |
+| Biến động | Đôi khi kích hoạt cập nhật dây chuyền. | Chỉ là nhật ký văn bản thuần; các service tự gọi `ThuPhiHoKhauService.recalculateForHousehold()` khi cần. |
 | Tài liệu | Lẫn lộn thuật ngữ cũ. | Được viết lại hoàn toàn để phản ánh miền v2 đã đơn giản hóa. |
 
 ---
@@ -37,7 +37,7 @@
 | `nhan_khau` | Nhân khẩu gắn với hộ. | `id`, `ho_ten`, `ngay_sinh`, `gioi_tinh`, `dan_toc`, `quoc_tich`, `nghe_nghiep`, bộ CCCD (`cmnd_cccd`, `ngay_cap`, `noi_cap`), `quan_he_chu_ho`, ghi chú, khoảng tạm trú/vắng, `ho_khau_id`. |
 | `bien_dong` | Nhật ký biến động dạng văn bản thuần. | `id`, `loai` viết hoa, `noi_dung` (<=1000 ký tự), `thoi_gian`, tùy chọn `ho_khau_id`, `nhan_khau_id`. |
 | `dot_thu_phi` | Đợt thu phí. | `id`, `ten_dot`, `loai` (`BAT_BUOC` hoặc `TU_NGUYEN`), `ngay_bat_dau`, `ngay_ket_thuc`, `dinh_muc` (`DECIMAL(15,2)`). |
-| `thu_phi_ho_khau` | Phiếu thu theo hộ và đợt. | `id`, FK `ho_khau_id`, FK `dot_thu_phi_id`, `so_nguoi` tự tính, `tong_phi` tự tính, enum `trang_thai` (`CHUA_NOP`, `DA_NOP`, `KHONG_AP_DUNG`), tùy chọn `ngay_thu`, `ghi_chu`, `collected_by`. |
+| `thu_phi_ho_khau` | Phiếu thu theo hộ và đợt. | `id`, FK `ho_khau_id`, FK `dot_thu_phi_id`, `so_nguoi` tự tính, `tong_phi` tự tính, enum `trang_thai` (`CHUA_NOP`, `DA_NOP`), tùy chọn `ngay_thu`, `ghi_chu`, `collected_by`. |
 
 > **Không còn cột audit.** Mọi thứ liệt kê ở trên khớp 1:1 với các entity trong `backend/src/main/java/com/example/QuanLyDanCu/entity`.
 
@@ -51,9 +51,9 @@
 <a name="2-household-management-rules"></a>
 1. `soHoKhau` được cấp ngoài hệ thống (thường bởi cán bộ) và **không thể chỉnh sửa** sau khi tạo (`@Column(updatable = false)`).
 2. Chỉ `ADMIN` hoặc `TOTRUONG` mới được tạo/cập nhật/xóa hộ; `KETOAN` chỉ xem.
-3. Khi tạo sẽ tự gán `ngayTao = LocalDate.now()` và phát `HoKhauChangedEvent` để chuẩn bị stub thu phí.
+3. Khi tạo sẽ tự gán `ngayTao = LocalDate.now()`. Hệ thống **không** tạo stub thu phí; các khoản sẽ được tính khi có phát sinh thực tế.
 4. Cập nhật là **partial update** chỉ nhận `tenChuHo` hoặc `diaChi`. Nếu không có thay đổi, service trả lại "Không có gì để thay đổi!".
-5. Xóa hộ phát sự kiện để xóa dây chuyền các phiếu thu thuộc hộ đó. Nhân khẩu phải được chuyển hoặc xóa thủ công trước.
+5. Xóa hộ dựa vào ràng buộc `ON DELETE CASCADE` nên service chỉ cần `deleteById`. Nhân khẩu phải được chuyển hoặc xóa thủ công trước.
 
 ---
 
@@ -63,7 +63,7 @@
 2. **Kiểm tra CCCD theo tuổi** (`NhanKhauService#validateCccdByAge`):
    - `< 14` tuổi: toàn bộ trường CCCD **phải null/rỗng**.
    - `>= 14` tuổi: bắt buộc `cmndCccd`, `ngayCap`, `noiCap`, số phải 9-12 chữ số, `ngayCap >= ngaySinh + 14 năm` và `<= hôm nay`.
-3. Mọi thao tác (tạo/cập nhật/xóa hoặc thay đổi tạm trú/vắng) đều phát `NhanKhauChangedEvent` để hộ khẩu tự tính lại phí.
+3. Sau khi tạo, chuyển hộ, xóa hoặc cập nhật trạng thái tạm vắng, service sẽ gọi thẳng `ThuPhiHoKhauService.recalculateForHousehold()` để cập nhật phí hộ tương ứng.
 4. Partial update cho phép thay đổi bất kỳ trường nào nhưng luôn chạy lại kiểm tra CCCD sau khi trộn dữ liệu.
 5. Xóa cứng, không có cờ soft delete.
 6. Trạng thái dẫn xuất trong `NhanKhauResponseDto.trangThaiHienTai`:
@@ -87,27 +87,29 @@
 <a name="5-fee-management-rules"></a>
 ### 5.1 Đợt thu phí (`dot_thu_phi`)
 - Bắt buộc (`BAT_BUOC`): `dinhMuc` phải dương; ngày kết thúc phải >= ngày bắt đầu.
-- Tự nguyện (`TU_NGUYEN`): `dinhMuc` mặc định 0 nếu bỏ trống.
-- Số tháng được tính động: `months = ChronoUnit.MONTHS.between(ngayBatDau, ngayKetThuc)` và làm tròn lên khi có tháng lẻ, tối thiểu 1.
+- Tự nguyện (`TU_NGUYEN`): `dinhMuc` mặc định 0 nếu bỏ trống (làm gợi ý đóng góp, không dùng trong công thức).
 
 ### 5.2 Phiếu thu (`thu_phi_ho_khau`)
 | Quy tắc | Chi tiết |
 |------|--------|
 | Bản ghi đơn | Service từ chối tạo nếu đã có mục cùng `(hoKhauId, dotThuPhiId)`. |
-| Tự tính tổng | `soNguoi` tính từ `nhan_khau` (loại ai có `tamVangDen` là hôm nay hoặc tương lai). `tongPhi = dinh_muc x months x soNguoi`. |
-| Bộ trạng thái | Chỉ có `CHUA_NOP`, `DA_NOP`, `KHONG_AP_DUNG`. Phiếu bắt buộc tạo qua API dùng `DA_NOP`; phiếu tự nguyện luôn dùng `KHONG_AP_DUNG`. |
-| Phí tự nguyện | Luôn cưỡng chế `soNguoi = 0`, `tongPhi = 0` bất kể quy mô hộ. |
-| Ngày thu | Nếu cung cấp thì phải nằm trong khoảng đợt thu; nếu không sẽ bị từ chối. |
+| Tự tính tổng | `soNguoi` tính từ `nhan_khau` (loại ai có `tamVangDen` >= hôm nay). `tongPhi = soNguoi × dinh_muc × số_tháng`. |
+| Bộ trạng thái | Bảng `thu_phi_ho_khau` chỉ lưu `DA_NOP`. `CHUA_NOP` chỉ xuất hiện ảo trong API tổng quan đối với hộ chưa đóng. |
+| Phí tự nguyện | `soNguoi = 0`, `tongPhi` bắt buộc > 0 trong request và được lưu với trạng thái `DA_NOP`. Không tồn tại khái niệm "chưa nộp" cho đợt tự nguyện. |
+| Ngày thu | Bắt buộc cho cả đợt bắt buộc và tự nguyện; giá trị phải nằm trong khoảng thời gian của đợt thu. |
+| Payload `tongPhi` | `BAT_BUOC` không nhận trường `tongPhi` trong payload (server tự tính). `TU_NGUYEN` bắt buộc có `tongPhi` > 0, vi phạm trả 400. |
 | Partial update | Chỉ sửa được `ngayThu` và `ghiChu`. Không cho đổi ID khóa ngoại. |
-| Tính lại | Sự kiện hộ và nhân khẩu gọi `ThuPhiHoKhauService.recalculateForHousehold`, cập nhật `soNguoi` và `tongPhi` cho phiếu **bắt buộc** nhưng giữ nguyên trạng thái, ngày và collectedBy. |
-| Stub ban đầu | Khi tạo hộ, đợt thu khả dụng đầu tiên sẽ sinh stub (`CHUA_NOP` nếu bắt buộc, `KHONG_AP_DUNG` nếu tự nguyện) để dashboard không bị trống. |
+| Tính lại | `ThuPhiHoKhauService.recalculateForHousehold()` được gọi sau khi tạo nhân khẩu, chuyển hộ, xóa nhân khẩu hoặc cập nhật trạng thái tạm vắng, cập nhật `soNguoi`/`tongPhi` cho phiếu bắt buộc mà không đổi trạng thái. |
+
+> `số_tháng` được tính bằng `YearMonth` + `ChronoUnit.MONTHS` (bao gồm cả tháng bắt đầu và kết thúc). Nếu một trong hai ngày trống, hệ thống mặc định 1 tháng để tránh mất dữ liệu lịch sử.
+
+> Tổng quan (`/api/thu-phi-ho-khau/overview`) hiển thị `CHUA_NOP` cho các hộ chưa có bản ghi và tính `soHoDaNop` dựa trên số lượng bản ghi thực tế.
 
 ### 5.3 Trạng thái thu phí
 | Trạng thái | Ý nghĩa | Khi nào sử dụng |
 |--------|---------|-----------|
-| `CHUA_NOP` | Phí bắt buộc đã tính nhưng chưa thu. | Chỉ áp dụng cho stub tự sinh trước khi ghi nhận tiền. |
-| `DA_NOP` | Phí bắt buộc đã thu đủ theo số tháng và thành viên. | Mọi lần tạo phiếu thủ công thông qua API (sau khi đã thu tiền). |
-| `KHONG_AP_DUNG` | Phí tự nguyện không thu tiền. | Toàn bộ đợt tự nguyện. |
+| `CHUA_NOP` | Phí bắt buộc đã tính nhưng chưa thu. | Được hiểu khi chưa tồn tại bản ghi `(hoKhauId, dotThuPhiId)`. |
+| `DA_NOP` | Đã thu đủ hoặc đã ghi nhận tiền đóng góp. | Mọi bản ghi được tạo qua API. |
 
 ---
 
@@ -115,7 +117,7 @@
 <a name="6-biến-động-logging"></a>
 1. Controller chỉ chấp nhận các loại viết hoa cố định: `CHUYEN_DEN`, `CHUYEN_DI`, `TACH_HO`, `NHAP_HO`, `KHAI_TU`, `SINH`, `THAY_DOI_THONG_TIN`.
 2. DTO kiểm tra payload bằng regex; service chuyển sang chữ hoa trước khi lưu.
-3. **Không có tác dụng phụ**: tạo, sửa, xóa log không làm thay đổi `nhan_khau` hay `ho_khau`. Mọi side-effect nghiệp vụ được xử lý tại các service tương ứng thông qua event.
+3. **Không có tác dụng phụ**: tạo, sửa, xóa log không làm thay đổi `nhan_khau` hay `ho_khau`. Nếu cần phản ứng nghiệp vụ, các service tự gọi nhau trực tiếp (không còn event ẩn).
 4. `thoiGian` mặc định là `now()` nếu bỏ trống; cán bộ có thể nhập lại để ghi nhận quá khứ.
 5. Văn bản giới hạn 1000 ký tự để nhật ký gọn gàng.
 

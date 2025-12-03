@@ -6,12 +6,10 @@ import com.example.QuanLyDanCu.dto.response.HoKhauResponseDto;
 import com.example.QuanLyDanCu.dto.response.NhanKhauResponseDto;
 import com.example.QuanLyDanCu.enums.BienDongType;
 import com.example.QuanLyDanCu.entity.HoKhau;
-import com.example.QuanLyDanCu.event.ChangeOperation;
-import com.example.QuanLyDanCu.event.HoKhauChangedEvent;
+import com.example.QuanLyDanCu.exception.BusinessException;
+import com.example.QuanLyDanCu.exception.NotFoundException;
 import com.example.QuanLyDanCu.repository.HoKhauRepository;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,12 +22,10 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class HoKhauService {
 
     private final HoKhauRepository hoKhauRepo;
     private final NhanKhauService nhanKhauService;
-    private final ApplicationEventPublisher eventPublisher;
     private final BienDongService bienDongService;
 
     // ========== DTO-based methods ==========
@@ -44,7 +40,7 @@ public class HoKhauService {
     // Lấy hộ khẩu theo id (DTO)
     public HoKhauResponseDto getById(Long id) {
         HoKhau hk = hoKhauRepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy hộ khẩu id = " + id));
+            .orElseThrow(() -> new NotFoundException("Không tìm thấy hộ khẩu id = " + id));
         return toResponseDto(hk);
     }
 
@@ -60,10 +56,6 @@ public class HoKhauService {
 
         HoKhau saved = hoKhauRepo.save(hk);
         
-        // Publish event to trigger ThuPhiHoKhau creation
-        log.info("Publishing HoKhauChangedEvent for newly created household: {}", saved.getId());
-        eventPublisher.publishEvent(new HoKhauChangedEvent(this, saved.getId(), ChangeOperation.CREATE));
-
         bienDongService.log(
             BienDongType.THAY_DOI_THONG_TIN,
             "Tạo hộ khẩu mới: " + saved.getSoHoKhau(),
@@ -78,7 +70,7 @@ public class HoKhauService {
     @Transactional
     public HoKhauResponseDto update(Long id, HoKhauUpdateDto dto, Authentication auth) {
         HoKhau existing = hoKhauRepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy hộ khẩu id = " + id));
+            .orElseThrow(() -> new NotFoundException("Không tìm thấy hộ khẩu id = " + id));
         
         boolean changed = false;
         List<Runnable> pendingLogs = new ArrayList<>();
@@ -113,16 +105,12 @@ public class HoKhauService {
         }
 
         if (!changed) {
-            throw new RuntimeException("Không có gì để thay đổi!");
+            throw new BusinessException("Không có gì để thay đổi");
         }
 
         HoKhau saved = hoKhauRepo.save(existing);
 
         pendingLogs.forEach(Runnable::run);
-        
-        // Publish event to trigger ThuPhiHoKhau recalculation
-        log.info("Publishing HoKhauChangedEvent for updated household: {}", saved.getId());
-        eventPublisher.publishEvent(new HoKhauChangedEvent(this, saved.getId(), ChangeOperation.UPDATE));
         
         return toResponseDto(saved);
     }
@@ -148,13 +136,10 @@ public class HoKhauService {
     // Xóa hộ khẩu
     @Transactional
     public void delete(Long id, Authentication auth) {
-        HoKhau hk = hoKhauRepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy hộ khẩu id = " + id));
-        
-        // Publish event BEFORE deletion to cascade delete ThuPhiHoKhau records
-        log.info("Publishing HoKhauChangedEvent for household deletion: {}", id);
-        eventPublisher.publishEvent(new HoKhauChangedEvent(this, id, ChangeOperation.DELETE));
-        
-        hoKhauRepo.delete(hk);
+        if (!hoKhauRepo.existsById(id)) {
+            throw new NotFoundException("Không tìm thấy hộ khẩu id = " + id);
+        }
+
+        hoKhauRepo.deleteById(id);
     }
 }

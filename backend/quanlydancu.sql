@@ -44,7 +44,7 @@ CREATE TABLE nhan_khau (
     tam_tru_tu DATE,
     tam_tru_den DATE,
     ho_khau_id BIGINT,
-    CONSTRAINT fk_nhankhau_hokhau FOREIGN KEY (ho_khau_id) REFERENCES ho_khau(id)
+    CONSTRAINT fk_nhankhau_hokhau FOREIGN KEY (ho_khau_id) REFERENCES ho_khau(id) ON DELETE CASCADE
 );
 
 -- ========================
@@ -57,8 +57,8 @@ CREATE TABLE bien_dong (
     thoi_gian TIMESTAMP,
     ho_khau_id BIGINT,
     nhan_khau_id BIGINT,
-    CONSTRAINT fk_biendong_hokhau FOREIGN KEY (ho_khau_id) REFERENCES ho_khau(id) ON DELETE SET NULL,
-    CONSTRAINT fk_biendong_nhankhau FOREIGN KEY (nhan_khau_id) REFERENCES nhan_khau(id) ON DELETE SET NULL
+    CONSTRAINT fk_biendong_hokhau FOREIGN KEY (ho_khau_id) REFERENCES ho_khau(id) ON DELETE CASCADE ,
+    CONSTRAINT fk_biendong_nhankhau FOREIGN KEY (nhan_khau_id) REFERENCES nhan_khau(id) ON DELETE CASCADE
 );
 
 -- ========================
@@ -84,18 +84,18 @@ CREATE TABLE thu_phi_ho_khau (
     dot_thu_phi_id BIGINT,
     so_nguoi INT,
     tong_phi DECIMAL(15,2),
-    trang_thai VARCHAR(20) CHECK (trang_thai IN ('CHUA_NOP', 'DA_NOP', 'KHONG_AP_DUNG')),
+    trang_thai VARCHAR(20) CHECK (trang_thai IN ('CHUA_NOP', 'DA_NOP')),
     ngay_thu DATE,
     ghi_chu VARCHAR(500),
     collected_by BIGINT,
-    CONSTRAINT fk_thuphi_hokhau FOREIGN KEY (ho_khau_id) REFERENCES ho_khau(id),
+    CONSTRAINT fk_thuphi_hokhau FOREIGN KEY (ho_khau_id) REFERENCES ho_khau(id) ON DELETE CASCADE,
     CONSTRAINT fk_thuphi_dotthuphi FOREIGN KEY (dot_thu_phi_id) REFERENCES dot_thu_phi(id),
     CONSTRAINT fk_thuphi_collected_by FOREIGN KEY (collected_by) REFERENCES tai_khoan(id)
 );
 
-COMMENT ON COLUMN thu_phi_ho_khau.so_nguoi IS 'Số người trong hộ (không bao gồm người tạm vắng dài hạn). Với phí TU_NGUYEN luôn = 0';
-COMMENT ON COLUMN thu_phi_ho_khau.tong_phi IS 'Tổng phí phải nộp. Phí BAT_BUOC: dinh_muc * months * so_nguoi. Phí TU_NGUYEN: luôn = 0';
-COMMENT ON COLUMN thu_phi_ho_khau.trang_thai IS 'Trạng thái: CHUA_NOP (chưa nộp đủ), DA_NOP (đã nộp đủ), KHONG_AP_DUNG (phí tự nguyện)';
+COMMENT ON COLUMN thu_phi_ho_khau.so_nguoi IS 'Số người trong hộ được tính tại thời điểm ghi nhận';
+COMMENT ON COLUMN thu_phi_ho_khau.tong_phi IS 'Tổng phí thực tế. Phí BAT_BUOC = dinh_muc * so_nguoi; phí TU_NGUYEN do hộ tự khai báo';
+COMMENT ON COLUMN thu_phi_ho_khau.trang_thai IS 'Trạng thái: CHUA_NOP (chưa nộp đủ), DA_NOP (đã nộp đủ)';
 
 
 

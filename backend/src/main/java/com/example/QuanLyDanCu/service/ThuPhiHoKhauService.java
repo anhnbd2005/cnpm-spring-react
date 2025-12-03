@@ -4,11 +4,12 @@ import com.example.QuanLyDanCu.dto.request.ThuPhiHoKhauRequestDto;
 import com.example.QuanLyDanCu.dto.response.ThuPhiHoKhauResponseDto;
 import com.example.QuanLyDanCu.entity.DotThuPhi;
 import com.example.QuanLyDanCu.entity.HoKhau;
-import com.example.QuanLyDanCu.entity.NhanKhau;
 import com.example.QuanLyDanCu.entity.TaiKhoan;
 import com.example.QuanLyDanCu.entity.ThuPhiHoKhau;
 import com.example.QuanLyDanCu.enums.LoaiThuPhi;
 import com.example.QuanLyDanCu.enums.TrangThaiThuPhi;
+import com.example.QuanLyDanCu.exception.BadRequestException;
+import com.example.QuanLyDanCu.exception.NotFoundException;
 import com.example.QuanLyDanCu.repository.DotThuPhiRepository;
 import com.example.QuanLyDanCu.repository.HoKhauRepository;
 import com.example.QuanLyDanCu.repository.NhanKhauRepository;
@@ -23,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -39,13 +41,15 @@ import java.util.stream.Collectors;
  *   <li><b>Một bản ghi duy nhất</b> cho mỗi hộ khẩu + đợt thu phí</li>
  *   <li><b>Thanh toán toàn bộ</b> một lần (không hỗ trợ thanh toán từng phần)</li>
  *   <li><b>Tính tháng động</b> từ ngayBatDau/ngayKetThuc của đợt thu phí</li>
- *   <li><b>Công thức:</b> tongPhi = dinhMuc × months × soNguoi</li>
+ *   <li><b>Công thức bắt buộc:</b> tongPhi = soNguoi × dinhMuc × sốTháng (bao gồm cả hai đầu mút)</li>
+ *   <li><b>Phi tự nguyện:</b> tongPhi được lấy trực tiếp từ yêu cầu người dùng</li>
+ *   <li><b>Lưu trữ:</b> bảng `thu_phi_ho_khau` chỉ lưu trạng thái `DA_NOP`; `CHUA_NOP` chỉ dùng khi hiển thị tổng quan</li>
  * </ul>
  * 
  * <h3>Trạng thái:</h3>
  * <ul>
- *   <li><b>BAT_BUOC:</b> DA_NOP (đã nộp đủ một lần)</li>
- *   <li><b>TU_NGUYEN:</b> KHONG_AP_DUNG (không bắt buộc)</li>
+ *   <li><b>BAT_BUOC:</b> DA_NOP (đã nộp đủ một lần), CHUA_NOP (ngầm hiểu khi chưa có bản ghi)</li>
+ *   <li><b>TU_NGUYEN:</b> chỉ tạo bản ghi khi người dân đóng góp</li>
  * </ul>
  * 
  * @author Refactored November 2025
@@ -82,15 +86,6 @@ public class ThuPhiHoKhauService {
     }
 
     /**
-     * Lấy bản ghi thu phí theo ID
-     */
-    public ThuPhiHoKhauResponseDto getById(Long id) {
-        ThuPhiHoKhau entity = repo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy bản ghi thu phí với ID = " + id));
-        return toResponseDto(entity);
-    }
-
-    /**
      * Lấy tất cả bản ghi thu phí của một hộ khẩu
      */
     public List<ThuPhiHoKhauResponseDto> findByHoKhauId(Long hoKhauId) {
@@ -108,72 +103,126 @@ public class ThuPhiHoKhauService {
                 .collect(Collectors.toList());
     }
 
-        /**
-         * Tổng quan thu phí theo đợt – trả về tất cả hộ khẩu cùng trạng thái hiện tại.
-         */
-        public List<ThuPhiHoKhauResponseDto> getOverviewByPeriod(Long dotThuPhiId) {
-        log.info("Building fee overview for dotThuPhiId={}", dotThuPhiId);
-
+    /**
+     * Tổng quan thu phí theo đợt – trả về cấu trúc thống kê cuối cùng.
+     */
+    public Map<String, Object> getOverviewByPeriod(Long dotThuPhiId) {
         DotThuPhi dotThuPhi = dotThuPhiRepo.findById(dotThuPhiId)
-            .orElseThrow(() -> new RuntimeException("Không tìm thấy đợt thu phí với ID = " + dotThuPhiId));
+            .orElseThrow(() -> new NotFoundException("Không tìm thấy đợt thu phí với ID = " + dotThuPhiId));
 
-        Map<Long, ThuPhiHoKhau> existingRecords = repo.findByDotThuPhiId(dotThuPhiId).stream()
-            .collect(Collectors.toMap(
-                record -> record.getHoKhau().getId(),
-                record -> record,
-                (left, right) -> left,
-                LinkedHashMap::new
-            ));
+        if (dotThuPhi.getLoai() == LoaiThuPhi.BAT_BUOC) {
+            return buildMandatoryOverview(dotThuPhi);
+        }
 
-        List<HoKhau> households = hoKhauRepo.findAll().stream()
-            .sorted(Comparator.comparing(
-                (HoKhau hk) -> hk.getSoHoKhau(),
-                Comparator.nullsLast(String::compareTo)
-            ))
-            .collect(Collectors.toList());
+        return buildVoluntaryOverview(dotThuPhi);
+    }
 
-        boolean isVoluntary = dotThuPhi.getLoai() == LoaiThuPhi.TU_NGUYEN;
-        int months = isVoluntary ? 0 : calculateMonthsInPeriod(dotThuPhi.getNgayBatDau(), dotThuPhi.getNgayKetThuc());
+    private Map<String, Object> buildMandatoryOverview(DotThuPhi dotThuPhi) {
+        long soThang = calculateMonths(dotThuPhi.getNgayBatDau(), dotThuPhi.getNgayKetThuc());
 
-        BigDecimal voluntaryAmount = isVoluntary ? BigDecimal.ZERO : null;
-        List<ThuPhiHoKhauResponseDto> overview = new ArrayList<>();
+        Map<Long, ThuPhiHoKhau> recordsByHousehold = repo.findByDotThuPhiId(dotThuPhi.getId()).stream()
+                .collect(Collectors.toMap(
+                        record -> record.getHoKhau().getId(),
+                        record -> record,
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+
+        List<HoKhau> households = hoKhauRepo.findAllByOrderByIdAsc();
+        households.sort(Comparator.comparing(
+            HoKhau::getSoHoKhau,
+            Comparator.nullsLast(String::compareTo)));
+        List<ThuPhiHoKhauResponseDto> rows = new ArrayList<>();
+
+        int totalHouseholds = households.size();
+        int paidHouseholds = recordsByHousehold.size();
+        BigDecimal tongDuKien = BigDecimal.ZERO;
+        BigDecimal tongDaThu = BigDecimal.ZERO;
 
         for (HoKhau hoKhau : households) {
-            ThuPhiHoKhau existing = existingRecords.get(hoKhau.getId());
+            int soNguoi = countEligibleMembers(hoKhau.getId());
+            BigDecimal expected = calculateMandatoryAmount(soNguoi, dotThuPhi.getDinhMuc(), soThang);
+            ThuPhiHoKhau existing = recordsByHousehold.get(hoKhau.getId());
+
+            ThuPhiHoKhauResponseDto dto;
+            TrangThaiThuPhi trangThai;
+            BigDecimal recordedAmount;
+
             if (existing != null) {
-            overview.add(toResponseDto(existing));
-            continue;
+                dto = toResponseDto(existing);
+                trangThai = existing.getTrangThai();
+                recordedAmount = existing.getTongPhi();
+                soNguoi = existing.getSoNguoi() != null ? existing.getSoNguoi() : soNguoi;
+            } else {
+                trangThai = TrangThaiThuPhi.CHUA_NOP;
+                recordedAmount = expected;
+                dto = ThuPhiHoKhauResponseDto.builder()
+                        .id(null)
+                        .hoKhauId(hoKhau.getId())
+                        .soHoKhau(hoKhau.getSoHoKhau())
+                        .tenChuHo(hoKhau.getTenChuHo())
+                        .dotThuPhiId(dotThuPhi.getId())
+                        .tenDot(dotThuPhi.getTenDot())
+                        .loaiThuPhi(dotThuPhi.getLoai())
+                        .soNguoi(soNguoi)
+                        .soThang(soThang)
+                        .tongPhi(expected)
+                        .trangThai(trangThai)
+                        .ngayThu(null)
+                        .ghiChu(null)
+                        .collectedBy(null)
+                        .build();
             }
 
-            int soNguoi = isVoluntary ? 0 : countEligibleMembers(hoKhau.getId());
-            BigDecimal tongPhi = isVoluntary
-                ? BigDecimal.ZERO
-                : calculateTotalFee(soNguoi, dotThuPhi.getDinhMuc(), months);
+            tongDuKien = tongDuKien.add(expected);
 
-            TrangThaiThuPhi trangThai = isVoluntary
-                ? TrangThaiThuPhi.KHONG_AP_DUNG
-                : TrangThaiThuPhi.CHUA_NOP;
+            if (existing != null) {
+                tongDaThu = tongDaThu.add(recordedAmount == null ? BigDecimal.ZERO : recordedAmount);
+            }
 
-            overview.add(ThuPhiHoKhauResponseDto.builder()
-                .id(null)
-                .hoKhauId(hoKhau.getId())
-                .soHoKhau(hoKhau.getSoHoKhau())
-                .tenChuHo(hoKhau.getTenChuHo())
-                .dotThuPhiId(dotThuPhi.getId())
-                .tenDot(dotThuPhi.getTenDot())
-                .loaiThuPhi(dotThuPhi.getLoai())
-                .soNguoi(soNguoi)
-                .tongPhi(isVoluntary ? null : tongPhi)
-                .trangThai(trangThai)
-                .tongPhiTuNguyen(voluntaryAmount)
-                .ngayThu(null)
-                .ghiChu(null)
-                .collectedBy(null)
-                .build());
+            rows.add(dto);
         }
 
-        return overview;
-        }
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("dotThuPhiId", dotThuPhi.getId());
+        summary.put("tenDot", dotThuPhi.getTenDot());
+        summary.put("loai", dotThuPhi.getLoai());
+        summary.put("tongHo", totalHouseholds);
+        summary.put("soHoDaNop", paidHouseholds);
+        summary.put("soHoChuaNop", Math.max(totalHouseholds - paidHouseholds, 0));
+        summary.put("tongDuKien", tongDuKien);
+        summary.put("soThang", soThang);
+        summary.put("tongDaThu", tongDaThu);
+        summary.put("tiLeHoDaNop", calculatePercentage(paidHouseholds, totalHouseholds));
+        summary.put("tiLeTienDaThu", calculateRatio(tongDaThu, tongDuKien));
+        summary.put("households", rows);
+
+        return summary;
+    }
+
+    private Map<String, Object> buildVoluntaryOverview(DotThuPhi dotThuPhi) {
+        List<ThuPhiHoKhauResponseDto> households = repo.findByDotThuPhiId(dotThuPhi.getId()).stream()
+            .sorted(Comparator.comparing(
+                (ThuPhiHoKhau record) -> {
+                    HoKhau hoKhau = record.getHoKhau();
+                    return hoKhau == null ? null : hoKhau.getSoHoKhau();
+                },
+                Comparator.nullsLast(String::compareTo)))
+                .map(this::toResponseDto)
+                .collect(Collectors.toList());
+
+        BigDecimal total = households.stream()
+                .map(dto -> dto.getTongPhi() == null ? BigDecimal.ZERO : dto.getTongPhi())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("dotThuPhiId", dotThuPhi.getId());
+        summary.put("tenDot", dotThuPhi.getTenDot());
+        summary.put("loai", dotThuPhi.getLoai());
+        summary.put("tongTienTuNguyen", total);
+        summary.put("households", households);
+        return summary;
+    }
 
     /**
      * Tính toán phí cho hộ khẩu theo đợt thu phí
@@ -181,47 +230,39 @@ public class ThuPhiHoKhauService {
      * @return Map chứa thông tin chi tiết về tính phí
      */
     public Map<String, Object> calculateFee(Long hoKhauId, Long dotThuPhiId) {
-        log.info("Calculating fee for hoKhauId={}, dotThuPhiId={}", hoKhauId, dotThuPhiId);
-        
-        // Validate household exists
         HoKhau hoKhau = hoKhauRepo.findById(hoKhauId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy hộ khẩu với ID = " + hoKhauId));
-        
-        // Validate fee period exists
+            .orElseThrow(() -> new NotFoundException("Không tìm thấy hộ khẩu với ID = " + hoKhauId));
+
         DotThuPhi dotThuPhi = dotThuPhiRepo.findById(dotThuPhiId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy đợt thu phí với ID = " + dotThuPhiId));
-        
-        // Count eligible members
-        int memberCount = countEligibleMembers(hoKhauId);
-        
-        // Calculate months in period
-        int months = calculateMonthsInPeriod(dotThuPhi.getNgayBatDau(), dotThuPhi.getNgayKetThuc());
-        
-        // Calculate total fee
-        BigDecimal monthlyFee = dotThuPhi.getDinhMuc();
-        BigDecimal totalFee = calculateTotalFee(memberCount, monthlyFee, months);
-        
-        // Build response
+            .orElseThrow(() -> new NotFoundException("Không tìm thấy đợt thu phí với ID = " + dotThuPhiId));
+
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("hoKhauId", hoKhauId);
         result.put("soHoKhau", hoKhau.getSoHoKhau());
         result.put("tenChuHo", hoKhau.getTenChuHo());
         result.put("dotThuPhiId", dotThuPhiId);
         result.put("tenDot", dotThuPhi.getTenDot());
+        result.put("loaiThuPhi", dotThuPhi.getLoai());
+
+        if (dotThuPhi.getLoai() == LoaiThuPhi.TU_NGUYEN) {
+            result.put("message", "Đợt thu tự nguyện không có định mức cố định. Người dân tự quyết định số tiền đóng góp.");
+            result.put("suggestedAmount", dotThuPhi.getDinhMuc());
+            return result;
+        }
+
+        int memberCount = countEligibleMembers(hoKhauId);
+        BigDecimal dinhMuc = dotThuPhi.getDinhMuc();
+        long soThang = calculateMonths(dotThuPhi.getNgayBatDau(), dotThuPhi.getNgayKetThuc());
+        BigDecimal totalFee = calculateMandatoryAmount(memberCount, dinhMuc, soThang);
+
         result.put("memberCount", memberCount);
-        result.put("monthlyFeePerPerson", monthlyFee);
-        result.put("months", months);
+        result.put("soThang", soThang);
+        result.put("dinhMuc", dinhMuc);
         result.put("totalFee", totalFee);
-        result.put("formula", String.format("%s × %d × %d = %s VND", 
-                monthlyFee, months, memberCount, totalFee));
-        result.put("periodStart", dotThuPhi.getNgayBatDau());
-        result.put("periodEnd", dotThuPhi.getNgayKetThuc());
-        
-        log.info("Calculated fee: {} members × {} months × {} VND = {} VND", 
-                 memberCount, months, monthlyFee, totalFee);
-        
+        result.put("formula", String.format("%s × %d × %d = %s VND", dinhMuc, memberCount, soThang, totalFee));
+
         return result;
-    }
+        }
 
     /**
      * Tạo bản ghi thu phí mới (ghi nhận thanh toán)
@@ -229,34 +270,36 @@ public class ThuPhiHoKhauService {
      * QUY TẮC:
      * - Chỉ cho phép một bản ghi duy nhất cho mỗi hộ khẩu + đợt thu phí
      * - Thanh toán luôn là toàn bộ số tiền (không hỗ trợ thanh toán từng phần)
-     * - BAT_BUOC: trạng thái = DA_NOP
-     * - TU_NGUYEN: trạng thái = KHONG_AP_DUNG
+    * - BAT_BUOC: trạng thái = DA_NOP (do ghi nhận thanh toán đầy đủ)
+    * - TU_NGUYEN: ghi nhận số tiền người dân đóng góp
      */
     @Transactional
     public ThuPhiHoKhauResponseDto create(ThuPhiHoKhauRequestDto dto, Authentication auth) {
-        log.info("Creating payment record for hoKhauId={}, dotThuPhiId={}", 
-                 dto.getHoKhauId(), dto.getDotThuPhiId());
         
         // Validate household exists
         HoKhau hoKhau = hoKhauRepo.findById(dto.getHoKhauId())
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy hộ khẩu với ID = " + dto.getHoKhauId()));
+            .orElseThrow(() -> new NotFoundException("Không tìm thấy hộ khẩu với ID = " + dto.getHoKhauId()));
         
         // Validate fee period exists
         DotThuPhi dotThuPhi = dotThuPhiRepo.findById(dto.getDotThuPhiId())
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy đợt thu phí với ID = " + dto.getDotThuPhiId()));
+            .orElseThrow(() -> new NotFoundException("Không tìm thấy đợt thu phí với ID = " + dto.getDotThuPhiId()));
+
+        if (dotThuPhi.getLoai() == LoaiThuPhi.BAT_BUOC && dto.getTongPhi() != null) {
+            throw new BadRequestException("Không được gửi trường 'tongPhi' cho đợt thu bắt buộc!");
+        }
         
-        // CRITICAL: Check if record already exists (enforce one record per household + period)
+        // CRITICAL: Check if a record already exists (enforce one record per household + period)
         List<ThuPhiHoKhau> existingRecords = repo.findByHoKhauIdAndDotThuPhiId(
                 dto.getHoKhauId(), dto.getDotThuPhiId());
         
         if (!existingRecords.isEmpty()) {
-            throw new RuntimeException(String.format(
+            throw new BadRequestException(String.format(
                     "Đã tồn tại bản ghi thu phí cho hộ khẩu '%s' trong đợt '%s'. " +
                     "Mỗi hộ khẩu chỉ được có một bản ghi cho mỗi đợt thu phí.",
                     hoKhau.getSoHoKhau(), dotThuPhi.getTenDot()));
         }
         
-        // Validate payment date falls within period
+        // Validate payment date falls within a period
         validatePaymentDate(dto.getNgayThu(), dotThuPhi);
         
         // Get current user
@@ -264,22 +307,18 @@ public class ThuPhiHoKhauService {
         
         // Calculate fee components
         int soNguoi;
+        long soThang = dotThuPhi.getLoai() == LoaiThuPhi.BAT_BUOC
+            ? calculateMonths(dotThuPhi.getNgayBatDau(), dotThuPhi.getNgayKetThuc())
+            : 0L;
         BigDecimal tongPhi;
-        TrangThaiThuPhi trangThai;
+        TrangThaiThuPhi trangThai = TrangThaiThuPhi.DA_NOP;
 
         if (dotThuPhi.getLoai() == LoaiThuPhi.TU_NGUYEN) {
             soNguoi = 0;
             tongPhi = normalizeVoluntaryAmount(dto.getTongPhi());
-            trangThai = TrangThaiThuPhi.KHONG_AP_DUNG;
-            log.info("Creating voluntary fee record - amount: {} VND", tongPhi);
         } else {
-            // Mandatory fees - calculate and mark as paid
             soNguoi = countEligibleMembers(dto.getHoKhauId());
-            int months = calculateMonthsInPeriod(dotThuPhi.getNgayBatDau(), dotThuPhi.getNgayKetThuc());
-            tongPhi = calculateTotalFee(soNguoi, dotThuPhi.getDinhMuc(), months);
-            trangThai = TrangThaiThuPhi.DA_NOP; // Payment complete on creation
-            log.info("Creating mandatory fee record: {} members × {} months = {} VND, status: DA_NOP", 
-                     soNguoi, months, tongPhi);
+            tongPhi = calculateMandatoryAmount(soNguoi, dotThuPhi.getDinhMuc(), soThang);
         }
         
         // Create entity
@@ -296,8 +335,8 @@ public class ThuPhiHoKhauService {
         
         ThuPhiHoKhau saved = repo.save(entity);
         
-        log.info("✅ Successfully created payment record ID={} for household '{}', period '{}', status: {}", 
-                 saved.getId(), hoKhau.getSoHoKhau(), dotThuPhi.getTenDot(), trangThai);
+        log.info("Created fee record id={} hoKhau={} dotThuPhi={}", 
+             saved.getId(), hoKhau.getId(), dotThuPhi.getId());
         
         return toResponseDto(saved);
     }
@@ -318,18 +357,16 @@ public class ThuPhiHoKhauService {
      */
     @Transactional
     public ThuPhiHoKhauResponseDto update(Long id, ThuPhiHoKhauRequestDto dto, Authentication auth) {
-        log.info("Updating payment record ID={}", id);
-        
         ThuPhiHoKhau existing = repo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy bản ghi thu phí với ID = " + id));
+            .orElseThrow(() -> new NotFoundException("Không tìm thấy bản ghi thu phí với ID = " + id));
         
         // Validate: Cannot change household or fee period
         if (dto.getHoKhauId() != null && !dto.getHoKhauId().equals(existing.getHoKhau().getId())) {
-            throw new RuntimeException("Không thể thay đổi hộ khẩu sau khi đã tạo bản ghi!");
+            throw new BadRequestException("Không thể thay đổi hộ khẩu sau khi đã tạo bản ghi!");
         }
         
         if (dto.getDotThuPhiId() != null && !dto.getDotThuPhiId().equals(existing.getDotThuPhi().getId())) {
-            throw new RuntimeException("Không thể thay đổi đợt thu phí sau khi đã tạo bản ghi!");
+            throw new BadRequestException("Không thể thay đổi đợt thu phí sau khi đã tạo bản ghi!");
         }
         
         // Update allowed fields only
@@ -339,22 +376,20 @@ public class ThuPhiHoKhauService {
             validatePaymentDate(dto.getNgayThu(), existing.getDotThuPhi());
             existing.setNgayThu(dto.getNgayThu());
             changed = true;
-            log.info("Updated ngayThu: {}", dto.getNgayThu());
         }
         
         if (dto.getGhiChu() != null && !dto.getGhiChu().equals(existing.getGhiChu())) {
             existing.setGhiChu(dto.getGhiChu());
             changed = true;
-            log.info("Updated ghiChu: {}", dto.getGhiChu());
         }
         
         if (!changed) {
-            throw new RuntimeException("Không có thông tin nào được thay đổi!");
+            throw new BadRequestException("Không có thông tin nào được thay đổi!");
         }
         
         ThuPhiHoKhau updated = repo.save(existing);
         
-        log.info("✅ Successfully updated payment record ID={}", id);
+        log.info("Updated fee record id={}", id);
         
         return toResponseDto(updated);
     }
@@ -364,15 +399,13 @@ public class ThuPhiHoKhauService {
      */
     @Transactional
     public void delete(Long id, Authentication auth) {
-        log.info("Deleting payment record ID={}", id);
-        
         if (!repo.existsById(id)) {
-            throw new RuntimeException("Không tìm thấy bản ghi thu phí với ID = " + id);
+            throw new NotFoundException("Không tìm thấy bản ghi thu phí với ID = " + id);
         }
         
         repo.deleteById(id);
         
-        log.info("✅ Successfully deleted payment record ID={}", id);
+        log.info("Deleted fee record id={}", id);
     }
 
     /**
@@ -390,133 +423,41 @@ public class ThuPhiHoKhauService {
      */
     @Transactional
     public void recalculateForHousehold(Long hoKhauId) {
-        log.info("🔄 Recalculating fees for household ID={}", hoKhauId);
-        
-        // Validate household exists
-        hoKhauRepo.findById(hoKhauId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy hộ khẩu với ID = " + hoKhauId));
-        
-        // Count current eligible members
-        int currentMemberCount = countEligibleMembers(hoKhauId);
-        log.info("Current eligible members: {}", currentMemberCount);
-        
-        // Find all fee records for this household
-        List<ThuPhiHoKhau> feeRecords = repo.findByHoKhauId(hoKhauId);
-        
-        if (feeRecords.isEmpty()) {
-            log.info("No fee records found for household ID={}", hoKhauId);
+        if (hoKhauId == null) {
             return;
         }
-        
-        log.info("Recalculating {} fee record(s)", feeRecords.size());
-        
-        int updatedCount = 0;
+
+        if (!hoKhauRepo.existsById(hoKhauId)) {
+            return;
+        }
+
+        List<ThuPhiHoKhau> feeRecords = repo.findByHoKhauId(hoKhauId);
+        if (feeRecords.isEmpty()) {
+            return;
+        }
+
+        int activeMembers = countEligibleMembers(hoKhauId);
+
+        List<ThuPhiHoKhau> toUpdate = new ArrayList<>();
         for (ThuPhiHoKhau record : feeRecords) {
-            DotThuPhi dotThuPhi = record.getDotThuPhi();
-            
-            // Skip voluntary fees (don't recalculate)
-            if (dotThuPhi.getLoai() == LoaiThuPhi.TU_NGUYEN) {
-                log.debug("Skipping voluntary fee record ID={}", record.getId());
+            if (record.getDotThuPhi().getLoai() == LoaiThuPhi.TU_NGUYEN) {
                 continue;
             }
-            
-            // Recalculate for mandatory fees
-            int oldSoNguoi = record.getSoNguoi();
-            BigDecimal oldTongPhi = record.getTongPhi();
-            
-            int months = calculateMonthsInPeriod(dotThuPhi.getNgayBatDau(), dotThuPhi.getNgayKetThuc());
-            BigDecimal newTongPhi = calculateTotalFee(currentMemberCount, dotThuPhi.getDinhMuc(), months);
-            
-            record.setSoNguoi(currentMemberCount);
-            record.setTongPhi(newTongPhi);
-            
-            // DO NOT change status - keep as-is
-            
-            repo.save(record);
-            
-            log.info("✅ Updated record ID={}: {} → {} members, {} → {} VND", 
-                     record.getId(), oldSoNguoi, currentMemberCount, oldTongPhi, newTongPhi);
-            
-            updatedCount++;
+
+            long soThang = calculateMonths(record.getDotThuPhi().getNgayBatDau(), record.getDotThuPhi().getNgayKetThuc());
+            BigDecimal expected = calculateMandatoryAmount(activeMembers, record.getDotThuPhi().getDinhMuc(), soThang);
+            if (!expected.equals(record.getTongPhi()) || !Integer.valueOf(activeMembers).equals(record.getSoNguoi())) {
+                record.setSoNguoi(activeMembers);
+                record.setTongPhi(expected);
+                toUpdate.add(record);
+            }
         }
-        
-        log.info("✅ Completed recalculation for household ID={}. Updated {} record(s).", 
-                 hoKhauId, updatedCount);
+
+        if (!toUpdate.isEmpty()) {
+            repo.saveAll(toUpdate);
+        }
     }
 
-    /**
-     * Tạo bản ghi thu phí ban đầu cho hộ khẩu mới
-     * Sử dụng đợt thu phí gần nhất
-     */
-    @Transactional
-    public void createInitialFeeRecord(Long hoKhauId) {
-        log.info("🆕 Creating initial fee record for new household ID={}", hoKhauId);
-        
-        HoKhau hoKhau = hoKhauRepo.findById(hoKhauId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy hộ khẩu với ID = " + hoKhauId));
-        
-        List<DotThuPhi> dotThuPhiList = dotThuPhiRepo.findAll();
-        
-        if (dotThuPhiList.isEmpty()) {
-            log.warn("⚠️ No fee periods found. Cannot create initial fee record.");
-            return;
-        }
-        
-        // Use first available fee period
-        DotThuPhi dotThuPhi = dotThuPhiList.get(0);
-        
-        int soNguoi;
-        BigDecimal tongPhi;
-        TrangThaiThuPhi trangThai;
-        
-        if (dotThuPhi.getLoai() == LoaiThuPhi.TU_NGUYEN) {
-            soNguoi = 0;
-            tongPhi = BigDecimal.ZERO;
-            trangThai = TrangThaiThuPhi.KHONG_AP_DUNG;
-        } else {
-            soNguoi = countEligibleMembers(hoKhauId);
-            int months = calculateMonthsInPeriod(dotThuPhi.getNgayBatDau(), dotThuPhi.getNgayKetThuc());
-            tongPhi = calculateTotalFee(soNguoi, dotThuPhi.getDinhMuc(), months);
-            trangThai = TrangThaiThuPhi.CHUA_NOP; // Not yet paid
-        }
-        
-        ThuPhiHoKhau newRecord = ThuPhiHoKhau.builder()
-                .hoKhau(hoKhau)
-                .dotThuPhi(dotThuPhi)
-                .soNguoi(soNguoi)
-                .tongPhi(tongPhi)
-                .trangThai(trangThai)
-                .ngayThu(null)
-                .ghiChu("Tự động tạo khi tạo hộ khẩu mới")
-            .collectedBy(null)
-                .build();
-        
-        ThuPhiHoKhau saved = repo.save(newRecord);
-        
-        log.info("✅ Created initial fee record ID={} for household '{}': {} members, {} VND, status: {}", 
-                 saved.getId(), hoKhau.getSoHoKhau(), soNguoi, tongPhi, trangThai);
-    }
-
-    /**
-     * Xóa tất cả bản ghi thu phí của một hộ khẩu
-     * (Được gọi khi xóa hộ khẩu)
-     */
-    @Transactional
-    public void deleteAllForHousehold(Long hoKhauId) {
-        log.info("🗑️ Deleting all fee records for household ID={}", hoKhauId);
-        
-        List<ThuPhiHoKhau> feeRecords = repo.findByHoKhauId(hoKhauId);
-        
-        if (feeRecords.isEmpty()) {
-            log.info("No fee records found for household ID={}", hoKhauId);
-            return;
-        }
-        
-        int count = feeRecords.size();
-        repo.deleteAll(feeRecords);
-        
-        log.info("✅ Deleted {} fee record(s) for household ID={}", count, hoKhauId);
-    }
 
     /**
      * Thống kê thu phí
@@ -534,9 +475,7 @@ public class ThuPhiHoKhauService {
                 .filter(t -> t.getTrangThai() == TrangThaiThuPhi.DA_NOP)
                 .count();
         
-        long unpaidCount = all.stream()
-                .filter(t -> t.getTrangThai() == TrangThaiThuPhi.CHUA_NOP)
-                .count();
+        long unpaidCount = 0L; // CHUA_NOP không còn được lưu trong cơ sở dữ liệu
         
         long totalHouseholds = all.stream()
                 .map(t -> t.getHoKhau().getId())
@@ -562,13 +501,13 @@ public class ThuPhiHoKhauService {
      */
     private BigDecimal normalizeVoluntaryAmount(BigDecimal rawAmount) {
         if (rawAmount == null) {
-            throw new RuntimeException("Vui lòng nhập tổng phí khi ghi nhận đợt thu tự nguyện!");
+            throw new BadRequestException("Tổng phí tự nguyện phải lớn hơn 0!");
         }
 
         BigDecimal normalized = rawAmount.setScale(2, RoundingMode.HALF_UP);
 
         if (normalized.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new RuntimeException("Tổng phí tự nguyện phải lớn hơn 0!");
+            throw new BadRequestException("Tổng phí tự nguyện phải lớn hơn 0!");
         }
 
         return normalized;
@@ -582,84 +521,48 @@ public class ThuPhiHoKhauService {
      * - Người đã khai tử (ngay_khai_tu != null)
      */
     private int countEligibleMembers(Long hoKhauId) {
-        List<NhanKhau> allMembers = nhanKhauRepo.findByHoKhauId(hoKhauId);
-        LocalDate today = LocalDate.now();
-        
-        long count = allMembers.stream()
-                .filter(member -> {
-                    // Exclude temporarily absent members
-                    LocalDate tamVangDen = member.getTamVangDen();
-                    if (tamVangDen != null && !tamVangDen.isBefore(today)) {
-                        return false;
-                    }
-                    
-                    // Exclude deceased members (if you have this field - uncomment if needed)
-                    // LocalDate ngayKhaiTu = member.getNgayKhaiTu();
-                    // if (ngayKhaiTu != null) {
-                    //     return false;
-                    // }
-                    
-                    return true;
-                })
-                .count();
-        
+        if (hoKhauId == null) {
+            return 0;
+        }
+        long count = nhanKhauRepo.countActiveMembers(hoKhauId, LocalDate.now());
         return (int) count;
     }
 
-    /**
-     * Tính số tháng trong kỳ thu phí
-     * 
-     * QUY TẮC:
-     * - Sử dụng ChronoUnit.MONTHS.between()
-     * - Nếu ngày kết thúc không phải đầu tháng → làm tròn lên
-     * - Tối thiểu 1 tháng
-     * 
-     * VÍ DỤ:
-     * - 01/01 đến 31/01: 1 tháng
-     * - 01/01 đến 01/02: 1 tháng
-     * - 01/01 đến 10/02: 2 tháng (làm tròn lên)
-     * - 01/01 đến 31/12: 12 tháng
-     */
-    private int calculateMonthsInPeriod(LocalDate startDate, LocalDate endDate) {
-        if (startDate == null || endDate == null) {
-            log.warn("Missing period dates, defaulting to 12 months");
-            return 12;
+    private BigDecimal calculateMandatoryAmount(int numberOfPeople, BigDecimal dinhMuc, long soThang) {
+        if (dinhMuc == null || numberOfPeople <= 0 || soThang <= 0) {
+            return BigDecimal.ZERO;
         }
-        
-        if (endDate.isBefore(startDate)) {
-            throw new RuntimeException("Ngày kết thúc không thể trước ngày bắt đầu!");
-        }
-        
-        // Calculate full months between dates
-        long fullMonths = ChronoUnit.MONTHS.between(startDate, endDate);
-        
-        // Check if there are remaining days (partial month)
-        LocalDate afterFullMonths = startDate.plusMonths(fullMonths);
-        boolean hasPartialMonth = afterFullMonths.isBefore(endDate);
-        
-        // Round up if partial month exists
-        int totalMonths = (int) fullMonths + (hasPartialMonth ? 1 : 0);
-        
-        // Minimum 1 month
-        if (totalMonths < 1) {
-            totalMonths = 1;
-        }
-        
-        log.debug("Period {} to {} = {} months (partial: {})", 
-                  startDate, endDate, totalMonths, hasPartialMonth);
-        
-        return totalMonths;
+        return dinhMuc
+                .multiply(BigDecimal.valueOf(numberOfPeople))
+                .multiply(BigDecimal.valueOf(soThang));
     }
 
-    /**
-     * Tính tổng phí
-     * 
-     * Công thức: tongPhi = dinhMuc × months × soNguoi
-     */
-    private BigDecimal calculateTotalFee(int numberOfPeople, BigDecimal monthlyFeePerPerson, int months) {
-        return monthlyFeePerPerson
-                .multiply(BigDecimal.valueOf(months))
-                .multiply(BigDecimal.valueOf(numberOfPeople));
+    private long calculateMonths(LocalDate start, LocalDate end) {
+        if (start == null || end == null) {
+            return 1L;
+        }
+        YearMonth startMonth = YearMonth.from(start);
+        YearMonth endMonth = YearMonth.from(end);
+        long months = ChronoUnit.MONTHS.between(startMonth, endMonth) + 1;
+        return Math.max(months, 1L);
+    }
+
+    private BigDecimal calculatePercentage(long numerator, long denominator) {
+        if (denominator == 0) {
+            return BigDecimal.ZERO;
+        }
+        return BigDecimal.valueOf(numerator)
+                .multiply(BigDecimal.valueOf(100))
+                .divide(BigDecimal.valueOf(denominator), 2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal calculateRatio(BigDecimal numerator, BigDecimal denominator) {
+        if (denominator == null || denominator.compareTo(BigDecimal.ZERO) == 0) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal safeNumerator = numerator == null ? BigDecimal.ZERO : numerator;
+        return safeNumerator.multiply(BigDecimal.valueOf(100))
+                .divide(denominator, 2, RoundingMode.HALF_UP);
     }
 
     /**
@@ -667,20 +570,20 @@ public class ThuPhiHoKhauService {
      */
     private void validatePaymentDate(LocalDate ngayThu, DotThuPhi dotThuPhi) {
         if (ngayThu == null) {
-            return; // Allow null payment date
+            throw new BadRequestException("Vui lòng nhập ngày thu!");
         }
-        
+
         LocalDate ngayBatDau = dotThuPhi.getNgayBatDau();
         LocalDate ngayKetThuc = dotThuPhi.getNgayKetThuc();
         
         if (ngayBatDau != null && ngayThu.isBefore(ngayBatDau)) {
-            throw new RuntimeException(String.format(
+            throw new BadRequestException(String.format(
                     "Đợt thu phí '%s' chưa bắt đầu. Ngày thu phải từ %s trở đi.",
                     dotThuPhi.getTenDot(), ngayBatDau));
         }
         
         if (ngayKetThuc != null && ngayThu.isAfter(ngayKetThuc)) {
-            throw new RuntimeException(String.format(
+            throw new BadRequestException(String.format(
                     "Đợt thu phí '%s' đã kết thúc vào %s. Không thể ghi nhận thanh toán sau ngày này.",
                     dotThuPhi.getTenDot(), ngayKetThuc));
         }
@@ -691,17 +594,16 @@ public class ThuPhiHoKhauService {
      */
     private TaiKhoan getCurrentUser(Authentication auth) {
         return taiKhoanRepo.findByTenDangNhap(auth.getName())
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy thông tin người dùng hiện tại"));
+                .orElseThrow(() -> new BadRequestException("Không tìm thấy thông tin người dùng hiện tại"));
     }
 
     /**
      * Chuyển đổi Entity -> Response DTO
      */
     private ThuPhiHoKhauResponseDto toResponseDto(ThuPhiHoKhau entity) {
-        LoaiThuPhi loaiThuPhi = entity.getDotThuPhi().getLoai();
-        boolean isVoluntary = loaiThuPhi == LoaiThuPhi.TU_NGUYEN;
-        BigDecimal voluntaryAmount = isVoluntary ? entity.getTongPhi() : null;
-        BigDecimal mandatoryAmount = isVoluntary ? null : entity.getTongPhi();
+        long soThang = calculateMonths(
+            entity.getDotThuPhi().getNgayBatDau(),
+            entity.getDotThuPhi().getNgayKetThuc());
 
         return ThuPhiHoKhauResponseDto.builder()
                 .id(entity.getId())
@@ -710,11 +612,11 @@ public class ThuPhiHoKhauService {
                 .tenChuHo(entity.getHoKhau().getTenChuHo())
                 .dotThuPhiId(entity.getDotThuPhi().getId())
                 .tenDot(entity.getDotThuPhi().getTenDot())
-                .loaiThuPhi(loaiThuPhi)
+            .loaiThuPhi(entity.getDotThuPhi().getLoai())
                 .soNguoi(entity.getSoNguoi())
-                .tongPhi(mandatoryAmount)
+            .soThang(soThang)
+            .tongPhi(entity.getTongPhi())
                 .trangThai(entity.getTrangThai())
-                .tongPhiTuNguyen(voluntaryAmount)
                 .ngayThu(entity.getNgayThu())
                 .ghiChu(entity.getGhiChu())
                 .collectedBy(entity.getCollectedBy())

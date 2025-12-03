@@ -2,6 +2,9 @@ package com.example.QuanLyDanCu.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
+
 import java.time.LocalDate;
 
 @Entity
@@ -66,7 +69,20 @@ public class NhanKhau {
     private LocalDate tamTruDen;
 
     // ===== Khóa ngoại (để dạng Long theo code hiện tại của bạn) =====
-    @Column(name = "ho_khau_id")
-    private Long hoKhauId;
+        @Column(name = "ho_khau_id")
+        private Long hoKhauId;
+
+        @ManyToOne(fetch = FetchType.LAZY)
+        @JoinColumn(
+            name = "ho_khau_id",
+            insertable = false,
+            updatable = false,
+            foreignKey = @ForeignKey(
+                name = "fk_nhan_khau_ho_khau",
+                foreignKeyDefinition = "FOREIGN KEY (ho_khau_id) REFERENCES ho_khau(id) ON DELETE CASCADE"
+            )
+        )
+        @OnDelete(action = OnDeleteAction.CASCADE)
+        private HoKhau hoKhau;
 
 }
