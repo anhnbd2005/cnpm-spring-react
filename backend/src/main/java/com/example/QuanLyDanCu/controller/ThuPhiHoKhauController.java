@@ -27,7 +27,7 @@ import java.util.Map;
 @Tag(name = "Thu Phí Hộ Khẩu", description = "API quản lý thu phí hộ khẩu")
 public class ThuPhiHoKhauController {
 
-    private final ThuPhiHoKhauService service;
+    private final ThuPhiHoKhauService thuPhiHoKhauService;
 
     @GetMapping
     @PreAuthorize("hasAnyAuthority('ADMIN','KETOAN','TOTRUONG')")
@@ -37,7 +37,7 @@ public class ThuPhiHoKhauController {
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ThuPhiHoKhauResponseDto.class)))
     })
     public ResponseEntity<List<ThuPhiHoKhauResponseDto>> getAll() {
-        return ResponseEntity.ok(service.getAll());
+        return ResponseEntity.ok(thuPhiHoKhauService.getAll());
     }
 
     @GetMapping("/stats")
@@ -47,7 +47,7 @@ public class ThuPhiHoKhauController {
             @ApiResponse(responseCode = "200", description = "Lấy thống kê thành công")
     })
     public ResponseEntity<Map<String, Object>> getStats() {
-        return ResponseEntity.ok(service.getStats());
+        return ResponseEntity.ok(thuPhiHoKhauService.getStats());
     }
 
     @GetMapping("/calculate")
@@ -62,7 +62,7 @@ public class ThuPhiHoKhauController {
             @RequestParam Long hoKhauId,
             @Parameter(description = "ID đợt thu phí", example = "1", required = true)
             @RequestParam Long dotThuPhiId) {
-        return ResponseEntity.ok(service.calculateFee(hoKhauId, dotThuPhiId));
+        return ResponseEntity.ok(thuPhiHoKhauService.calculateFee(hoKhauId, dotThuPhiId));
     }
 
     @GetMapping("/overview")
@@ -72,22 +72,10 @@ public class ThuPhiHoKhauController {
             @ApiResponse(responseCode = "200", description = "Lấy tổng quan thành công",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ThuPhiHoKhauResponseDto.class)))
     })
-    public ResponseEntity<List<ThuPhiHoKhauResponseDto>> getOverviewByPeriod(
+        public ResponseEntity<Map<String, Object>> getOverviewByPeriod(
             @Parameter(description = "ID đợt thu phí", required = true)
             @RequestParam Long dotThuPhiId) {
-        return ResponseEntity.ok(service.getOverviewByPeriod(dotThuPhiId));
-    }
-
-    @GetMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('ADMIN','KETOAN','TOTRUONG')")
-    @Operation(summary = "Lấy thu phí theo ID", description = "Trả về thông tin chi tiết của một bản ghi thu phí")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Tìm thấy thu phí",
-                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ThuPhiHoKhauResponseDto.class))),
-            @ApiResponse(responseCode = "404", description = "Không tìm thấy thu phí", content = @Content)
-    })
-    public ResponseEntity<ThuPhiHoKhauResponseDto> getById(@PathVariable Long id) {
-        return ResponseEntity.ok(service.getById(id));
+        return ResponseEntity.ok(thuPhiHoKhauService.getOverviewByPeriod(dotThuPhiId));
     }
 
     @GetMapping("/ho-khau/{hoKhauId}")
@@ -98,7 +86,7 @@ public class ThuPhiHoKhauController {
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ThuPhiHoKhauResponseDto.class)))
     })
     public ResponseEntity<List<ThuPhiHoKhauResponseDto>> getByHoKhauId(@PathVariable Long hoKhauId) {
-        return ResponseEntity.ok(service.findByHoKhauId(hoKhauId));
+        return ResponseEntity.ok(thuPhiHoKhauService.findByHoKhauId(hoKhauId));
     }
 
     @GetMapping("/dot-thu-phi/{dotThuPhiId}")
@@ -109,7 +97,7 @@ public class ThuPhiHoKhauController {
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ThuPhiHoKhauResponseDto.class)))
     })
     public ResponseEntity<List<ThuPhiHoKhauResponseDto>> getByDotThuPhiId(@PathVariable Long dotThuPhiId) {
-        return ResponseEntity.ok(service.findByDotThuPhiId(dotThuPhiId));
+        return ResponseEntity.ok(thuPhiHoKhauService.findByDotThuPhiId(dotThuPhiId));
     }
 
 
@@ -123,7 +111,7 @@ public class ThuPhiHoKhauController {
             @ApiResponse(responseCode = "403", description = "Không có quyền truy cập (chỉ ADMIN hoặc KETOAN)", content = @Content)
     })
     public ResponseEntity<ThuPhiHoKhauResponseDto> create(@Valid @RequestBody ThuPhiHoKhauRequestDto dto, Authentication auth) {
-        ThuPhiHoKhauResponseDto created = service.create(dto, auth);
+        ThuPhiHoKhauResponseDto created = thuPhiHoKhauService.create(dto, auth);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
@@ -138,7 +126,7 @@ public class ThuPhiHoKhauController {
             @ApiResponse(responseCode = "404", description = "Không tìm thấy thu phí", content = @Content)
     })
     public ResponseEntity<ThuPhiHoKhauResponseDto> update(@PathVariable Long id, @Valid @RequestBody ThuPhiHoKhauRequestDto dto, Authentication auth) {
-        return ResponseEntity.ok(service.update(id, dto, auth));
+        return ResponseEntity.ok(thuPhiHoKhauService.update(id, dto, auth));
     }
 
     @DeleteMapping("/{id}")
@@ -150,7 +138,7 @@ public class ThuPhiHoKhauController {
             @ApiResponse(responseCode = "404", description = "Không tìm thấy thu phí", content = @Content)
     })
     public ResponseEntity<String> delete(@PathVariable Long id, Authentication auth) {
-        service.delete(id, auth);
+        thuPhiHoKhauService.delete(id, auth);
         return ResponseEntity.ok("Đã xóa thu phí id = " + id);
     }
 }

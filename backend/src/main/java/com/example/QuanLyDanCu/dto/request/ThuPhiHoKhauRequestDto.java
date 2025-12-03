@@ -21,6 +21,7 @@ public class ThuPhiHoKhauRequestDto {
     @Schema(description = "ID của đợt thu phí", example = "1")
     private Long dotThuPhiId;
 
+    @NotNull(message = "Vui lòng nhập ngày thu!")
     @Schema(description = "Ngày thu phí", example = "2025-01-15")
     private LocalDate ngayThu;
 

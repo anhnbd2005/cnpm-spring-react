@@ -36,14 +36,14 @@ public class ThuPhiHoKhauResponseDto {
     @Schema(description = "Số người trong hộ", example = "3")
     private Integer soNguoi;
 
+    @Schema(description = "Số tháng được tính trong đợt", example = "2")
+    private Long soThang;
+
     @Schema(description = "Tổng phí phải nộp (VND)", example = "216000")
     private BigDecimal tongPhi;
 
     @Schema(description = "Trạng thái", example = "DA_NOP")
     private TrangThaiThuPhi trangThai;
-
-    @Schema(description = "Số tiền hộ đóng góp trong đợt tự nguyện (null nếu không phải đợt tự nguyện)", example = "750000")
-    private BigDecimal tongPhiTuNguyen;
 
     @Schema(description = "Ngày thu", example = "2025-01-15")
     private LocalDate ngayThu;
