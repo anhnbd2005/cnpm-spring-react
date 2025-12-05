@@ -32,9 +32,11 @@ public class NhanKhauRequestDto {
     private String gioiTinh;
 
     @Schema(description = "Dân tộc", example = "Kinh")
+    @NotNull(message = "Dân tộc không được để trống")
     private String danToc;
 
     @Schema(description = "Quốc tịch", example = "Việt Nam")
+    @NotNull(message = "Quốc tịch không được để trống")
     private String quocTich;
 
     @Schema(description = "Nghề nghiệp", example = "Kỹ sư")
