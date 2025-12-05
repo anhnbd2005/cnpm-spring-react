@@ -85,4 +85,6 @@ public class NhanKhau {
         @OnDelete(action = OnDeleteAction.CASCADE)
         private HoKhau hoKhau;
 
+    @Column(name = "trang_thai")
+    private String trangThai;
 }

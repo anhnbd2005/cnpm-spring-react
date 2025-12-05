@@ -65,6 +65,7 @@ public class NhanKhauService {
                 .quanHeChuHo(dto.getQuanHeChuHo())
                 .ghiChu(dto.getGhiChu())
                 .hoKhauId(dto.getHoKhauId())
+                .trangThai("THUONG_TRU")
                 .build();
 
         NhanKhau saved = nhanKhauRepo.save(nk);
@@ -243,6 +244,7 @@ public class NhanKhauService {
 
         nk.setTamTruTu(dto.getNgayBatDau());
         nk.setTamTruDen(dto.getNgayKetThuc());
+        nk.setTrangThai("TAM_TRU");
 
         String content = "Đăng ký tạm trú cho " + nk.getHoTen()
             + " từ " + dto.getNgayBatDau()
@@ -260,6 +262,7 @@ public class NhanKhauService {
             .orElseThrow(() -> new NotFoundException("Không tìm thấy nhân khẩu id = " + id));
         existing.setTamTruTu(null);
         existing.setTamTruDen(null);
+        existing.setTrangThai("THUONG_TRU");
 
         bienDongService.log(
             BienDongType.HUY_TAM_TRU,
@@ -282,6 +285,7 @@ public class NhanKhauService {
 
         nk.setTamVangTu(dto.getNgayBatDau());
         nk.setTamVangDen(dto.getNgayKetThuc());
+        nk.setTrangThai("TAM_VANG");
 
         String content = "Đăng ký tạm vắng cho " + nk.getHoTen()
             + " từ " + dto.getNgayBatDau()
@@ -301,6 +305,7 @@ public class NhanKhauService {
             .orElseThrow(() -> new NotFoundException("Không tìm thấy nhân khẩu id = " + id));
         existing.setTamVangTu(null);
         existing.setTamVangDen(null);
+        existing.setTrangThai("THUONG_TRU");
 
         bienDongService.log(
             BienDongType.HUY_TAM_VANG,
@@ -321,6 +326,7 @@ public class NhanKhauService {
         nk.setTamTruDen(null);
         nk.setTamVangTu(null);
         nk.setTamVangDen(null);
+        nk.setTrangThai("KHAI_TU");
 
         String content = "Khai tử: " + nk.getHoTen() + (lyDo != null ? " - Lý do: " + lyDo : "");
         bienDongService.log(BienDongType.KHAI_TU, content, nk.getHoKhauId(), nk.getId());
@@ -508,25 +514,25 @@ public class NhanKhauService {
     // Mapper: Entity -> Response DTO
     private NhanKhauResponseDto toResponseDTO(NhanKhau nk) {
         // Compute current status based on tam_vang/tam_tru dates
-        LocalDate now = LocalDate.now();
-        String trangThaiHienTai = "THUONG_TRU"; // default
-        
-        // Highest priority: citizen marked as deceased
-        if (nk.getGhiChu() != null && nk.getGhiChu().trim().equalsIgnoreCase("đã mất")) {
-            trangThaiHienTai = "DA_KHAI_TU";
-        }
-        // Check tam_vang next (higher priority than tam_tru)
-        else if (nk.getTamVangTu() != null && 
-            !now.isBefore(nk.getTamVangTu()) && 
-            (nk.getTamVangDen() == null || !now.isAfter(nk.getTamVangDen()))) {
-            trangThaiHienTai = "TAM_VANG";
-        } 
-        // Check tam_tru second
-        else if (nk.getTamTruTu() != null && 
-                 !now.isBefore(nk.getTamTruTu()) && 
-                 (nk.getTamTruDen() == null || !now.isAfter(nk.getTamTruDen()))) {
-            trangThaiHienTai = "TAM_TRU";
-        }
+//        LocalDate now = LocalDate.now();
+//        String trangThaiHienTai = "THUONG_TRU"; // default
+//
+//        // Highest priority: citizen marked as deceased
+//        if (nk.getGhiChu() != null && nk.getGhiChu().trim().equalsIgnoreCase("đã mất")) {
+//            trangThaiHienTai = "DA_KHAI_TU";
+//        }
+//        // Check tam_vang next (higher priority than tam_tru)
+//        else if (nk.getTamVangTu() != null &&
+//            !now.isBefore(nk.getTamVangTu()) &&
+//            (nk.getTamVangDen() == null || !now.isAfter(nk.getTamVangDen()))) {
+//            trangThaiHienTai = "TAM_VANG";
+//        }
+//        // Check tam_tru second
+//        else if (nk.getTamTruTu() != null &&
+//                 !now.isBefore(nk.getTamTruTu()) &&
+//                 (nk.getTamTruDen() == null || !now.isAfter(nk.getTamTruDen()))) {
+//            trangThaiHienTai = "TAM_TRU";
+//        }
         
         return NhanKhauResponseDto.builder()
                 .id(nk.getId())
@@ -545,7 +551,7 @@ public class NhanKhauService {
                 .tamVangDen(nk.getTamVangDen())
                 .tamTruTu(nk.getTamTruTu())
                 .tamTruDen(nk.getTamTruDen())
-                .trangThaiHienTai(trangThaiHienTai)
+                .trangThaiHienTai(nk.getTrangThai())
                 .hoKhauId(nk.getHoKhauId())
                 .build();
     }
