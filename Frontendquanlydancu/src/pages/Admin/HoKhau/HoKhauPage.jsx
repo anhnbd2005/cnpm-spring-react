@@ -6,6 +6,11 @@ import {
   updateHoKhau,
   deleteHoKhau,
 } from "../../../api/hoKhauApi";
+import {
+  createNhanKhau,
+  getAllNhanKhau,
+  updateNhanKhau,
+} from "../../../api/nhanKhauApi";
 import NoPermission from "../NoPermission";
 import "./HoKhauPage.css";
 
@@ -20,6 +25,21 @@ function HoKhauPage() {
     tenChuHo: "",
     diaChi: "",
   });
+  const [chuHoData, setChuHoData] = useState({
+    hoTen: "",
+    ngaySinh: "",
+    gioiTinh: "Nam",
+    danToc: "Kinh",
+    quocTich: "Việt Nam",
+    ngheNghiep: "",
+    cmndCccd: "",
+    ngayCap: "",
+    noiCap: "",
+    quanHeChuHo: "Chủ hộ",
+    ghiChu: "",
+  });
+  const [validationErrors, setValidationErrors] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const role = localStorage.getItem("role");
 
   // Kiểm tra quyền: ADMIN, TOTRUONG có thể tạo/sửa/xóa, KETOAN chỉ xem
@@ -54,6 +74,19 @@ function HoKhauPage() {
         tenChuHo: item.tenChuHo || "",
         diaChi: item.diaChi || "",
       });
+      setChuHoData({
+        hoTen: item.tenChuHo || "",
+        ngaySinh: "",
+        gioiTinh: "Nam",
+        danToc: "Kinh",
+        quocTich: "Việt Nam",
+        ngheNghiep: "",
+        cmndCccd: "",
+        ngayCap: "",
+        noiCap: "",
+        quanHeChuHo: "Chủ hộ",
+        ghiChu: "",
+      });
     } else {
       setEditingItem(null);
       setFormData({
@@ -61,6 +94,20 @@ function HoKhauPage() {
         tenChuHo: "",
         diaChi: "",
       });
+      setChuHoData({
+        hoTen: "",
+        ngaySinh: "",
+        gioiTinh: "Nam",
+        danToc: "Kinh",
+        quocTich: "Việt Nam",
+        ngheNghiep: "",
+        cmndCccd: "",
+        ngayCap: "",
+        noiCap: "",
+        quanHeChuHo: "Chủ hộ",
+        ghiChu: "",
+      });
+      setValidationErrors({});
     }
     setShowModal(true);
   };
@@ -73,22 +120,108 @@ function HoKhauPage() {
       tenChuHo: "",
       diaChi: "",
     });
+    setChuHoData({
+      hoTen: "",
+      ngaySinh: "",
+      gioiTinh: "Nam",
+      danToc: "Kinh",
+      quocTich: "Việt Nam",
+      ngheNghiep: "",
+      cmndCccd: "",
+      ngayCap: "",
+      noiCap: "",
+      quanHeChuHo: "Chủ hộ",
+      ghiChu: "",
+    });
+    setValidationErrors({});
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
       if (editingItem) {
+        // Cập nhật hộ khẩu
         await updateHoKhau(editingItem.id, formData);
+        
+        // Nếu tên chủ hộ đã thay đổi, cập nhật nhân khẩu là chủ hộ
+        if (editingItem.tenChuHo !== formData.tenChuHo) {
+          try {
+            const allNhanKhaus = await getAllNhanKhau();
+            // Tìm nhân khẩu là chủ hộ của hộ khẩu này
+            const chuHoNhanKhau = allNhanKhaus.find(
+              (nk) => nk.hoKhauId === editingItem.id && nk.quanHeChuHo === "Chủ hộ"
+            );
+            
+            if (chuHoNhanKhau) {
+              // Cập nhật tên nhân khẩu
+              await updateNhanKhau(chuHoNhanKhau.id, {
+                ...chuHoNhanKhau,
+                hoTen: formData.tenChuHo,
+              });
+            }
+          } catch (err) {
+            console.error("Không thể cập nhật tên nhân khẩu:", err);
+          }
+        }
+        
         alert("Cập nhật hộ khẩu thành công!");
       } else {
-        await createHoKhau(formData);
-        alert("Tạo hộ khẩu thành công!");
+        // Validate dữ liệu nhân khẩu chủ hộ
+        const errors = {};
+        if (chuHoData.cmndCccd && !/^\d{12}$/.test(chuHoData.cmndCccd)) {
+          errors.cmndCccd = "Căn cước công dân phải gồm 12 số";
+        }
+        setValidationErrors(errors);
+        if (Object.keys(errors).length > 0) {
+          setIsSubmitting(false);
+          return;
+        }
+
+        // Tạo hộ khẩu
+        const createdHoKhau = await createHoKhau(formData);
+
+        // Sau khi tạo hộ khẩu, tự động thêm nhân khẩu chủ hộ
+        try {
+          const hoKhauId = Number(createdHoKhau?.id ?? createdHoKhau?.hoKhauId);
+          if (!hoKhauId) {
+            throw new Error("Không xác định được ID hộ khẩu vừa tạo");
+          }
+
+          await createNhanKhau({
+            ...chuHoData,
+            hoTen: formData.tenChuHo,
+            hoKhauId,
+            quanHeChuHo: "Chủ hộ",
+            ngaySinh: chuHoData.ngaySinh || null,
+            ngayCap: chuHoData.ngayCap || null,
+          });
+          alert("Tạo hộ khẩu và chủ hộ thành công!");
+        } catch (err) {
+          // Rollback hộ khẩu nếu thêm nhân khẩu thất bại
+          try {
+            const hoKhauId = Number(createdHoKhau?.id ?? createdHoKhau?.hoKhauId);
+            if (hoKhauId) {
+              await deleteHoKhau(hoKhauId);
+            }
+          } catch (rollbackErr) {
+            console.error("Rollback hộ khẩu thất bại:", rollbackErr);
+          }
+
+          alert(
+            err.response?.data?.message ||
+              "Không thể thêm nhân khẩu chủ hộ. Hộ khẩu chưa được lưu. Vui lòng thử lại."
+          );
+          throw err;
+        }
       }
       handleCloseModal();
       loadHoKhaus();
     } catch (err) {
       alert(err.response?.data?.message || "Có lỗi xảy ra!");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -220,7 +353,13 @@ function HoKhauPage() {
                   type="text"
                   value={formData.tenChuHo}
                   onChange={(e) =>
-                    setFormData({ ...formData, tenChuHo: e.target.value })
+                    {
+                      const value = e.target.value;
+                      setFormData({ ...formData, tenChuHo: value });
+                      if (!editingItem) {
+                        setChuHoData((prev) => ({ ...prev, hoTen: value }));
+                      }
+                    }
                   }
                   required
                 />
@@ -238,11 +377,130 @@ function HoKhauPage() {
                   rows="3"
                 />
               </div>
+
+              {!editingItem && (
+                <>
+                  <div className="modal-section-title">Thông tin chủ hộ</div>
+                  <div className="form-group">
+                    <label>Họ tên chủ hộ</label>
+                    <input type="text" value={formData.tenChuHo} disabled />
+                  </div>
+                  <div className="form-group">
+                    <label>
+                      Ngày sinh <span className="required">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={chuHoData.ngaySinh}
+                      onChange={(e) =>
+                        setChuHoData({ ...chuHoData, ngaySinh: e.target.value })
+                      }
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Giới tính</label>
+                    <select
+                      value={chuHoData.gioiTinh}
+                      onChange={(e) =>
+                        setChuHoData({ ...chuHoData, gioiTinh: e.target.value })
+                      }
+                    >
+                      <option value="Nam">Nam</option>
+                      <option value="Nữ">Nữ</option>
+                      <option value="Khác">Khác</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>
+                      Dân tộc <span className="required">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={chuHoData.danToc}
+                      onChange={(e) =>
+                        setChuHoData({ ...chuHoData, danToc: e.target.value })
+                      }
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>
+                      Quốc tịch <span className="required">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={chuHoData.quocTich}
+                      onChange={(e) =>
+                        setChuHoData({ ...chuHoData, quocTich: e.target.value })
+                      }
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Nghề nghiệp</label>
+                    <input
+                      type="text"
+                      value={chuHoData.ngheNghiep}
+                      onChange={(e) =>
+                        setChuHoData({ ...chuHoData, ngheNghiep: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>CMND/CCCD</label>
+                    <input
+                      type="text"
+                      value={chuHoData.cmndCccd}
+                      onChange={(e) =>
+                        setChuHoData({ ...chuHoData, cmndCccd: e.target.value })
+                      }
+                    />
+                    {validationErrors.cmndCccd && (
+                      <span className="error-message">{validationErrors.cmndCccd}</span>
+                    )}
+                  </div>
+                  <div className="form-group">
+                    <label>Ngày cấp</label>
+                    <input
+                      type="date"
+                      value={chuHoData.ngayCap}
+                      onChange={(e) =>
+                        setChuHoData({ ...chuHoData, ngayCap: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Nơi cấp</label>
+                    <input
+                      type="text"
+                      value={chuHoData.noiCap}
+                      onChange={(e) =>
+                        setChuHoData({ ...chuHoData, noiCap: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Quan hệ với chủ hộ</label>
+                    <input type="text" value="Chủ hộ" disabled />
+                  </div>
+                  <div className="form-group">
+                    <label>Ghi chú</label>
+                    <textarea
+                      value={chuHoData.ghiChu}
+                      onChange={(e) =>
+                        setChuHoData({ ...chuHoData, ghiChu: e.target.value })
+                      }
+                      rows="3"
+                    />
+                  </div>
+                </>
+              )}
               <div className="form-actions">
                 <button type="button" className="btn-cancel" onClick={handleCloseModal}>
                   Hủy
                 </button>
-                <button type="submit" className="btn-submit">
+                <button type="submit" className="btn-submit" disabled={isSubmitting}>
                   {editingItem ? "Cập nhật" : "Thêm mới"}
                 </button>
               </div>

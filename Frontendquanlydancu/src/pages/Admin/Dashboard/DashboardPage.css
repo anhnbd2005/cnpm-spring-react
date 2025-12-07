@@ -133,6 +133,19 @@
 }
 
 /* Thống kê giới tính */
+.gender-pie-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px 0;
+  min-height: 350px;
+}
+
+.gender-pie-wrapper canvas {
+  max-width: 100%;
+  max-height: 350px;
+}
+
 .gender-stats {
   display: flex;
   flex-direction: column;

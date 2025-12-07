@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   getAllNhanKhau,
   createNhanKhau,
@@ -11,7 +11,7 @@ import {
   cancelTamVang,
   registerKhaiTu,
 } from "../../../api/nhanKhauApi";
-import { getAllHoKhau } from "../../../api/hoKhauApi";
+import { getAllHoKhau, updateHoKhau } from "../../../api/hoKhauApi";
 import NoPermission from "../NoPermission";
 import "./NhanKhauPage.css";
 
@@ -48,6 +48,17 @@ function NhanKhauPage() {
   const [validationErrors, setValidationErrors] = useState({});
   const [submitError, setSubmitError] = useState("");
   const role = localStorage.getItem("role");
+
+  // Các hộ khẩu đã có chủ hộ (dùng để chặn chọn thêm "Chủ hộ")
+  const hoKhauHasChuHo = useMemo(() => {
+    const set = new Set();
+    nhanKhaus.forEach((nk) => {
+      if (nk.quanHeChuHo === "Chủ hộ" && nk.hoKhauId) {
+        set.add(Number(nk.hoKhauId));
+      }
+    });
+    return set;
+  }, [nhanKhaus]);
 
   const allowedRoles = ["ADMIN", "TOTRUONG", "KETOAN"];
   const canEdit = role === "ADMIN" || role === "TOTRUONG";
@@ -201,6 +212,16 @@ function NhanKhauPage() {
     setValidationErrors({});
     setSubmitError("");
     
+    const selectedHoKhauHasChuHo = formData.hoKhauId
+      ? hoKhauHasChuHo.has(Number(formData.hoKhauId))
+      : false;
+    const allowChuHoOption = editingItem?.quanHeChuHo === "Chủ hộ" || !selectedHoKhauHasChuHo;
+
+    if (!allowChuHoOption && formData.quanHeChuHo === "Chủ hộ") {
+      setSubmitError("Hộ khẩu này đã có chủ hộ, hãy chọn quan hệ khác.");
+      return;
+    }
+
     try {
       const submitData = {
         ...formData,
@@ -209,7 +230,24 @@ function NhanKhauPage() {
         ngayCap: formData.ngayCap || null,
       };
       if (editingItem) {
+        // Cập nhật nhân khẩu
         await updateNhanKhau(editingItem.id, submitData);
+        
+        // Nếu đây là chủ hộ và tên đã thay đổi, cập nhật tên chủ hộ trong hộ khẩu
+        if (editingItem.quanHeChuHo === "Chủ hộ" && editingItem.hoTen !== formData.hoTen) {
+          try {
+            const hoKhau = hoKhaus.find((hk) => hk.id === Number(formData.hoKhauId));
+            if (hoKhau) {
+              await updateHoKhau(hoKhau.id, {
+                ...hoKhau,
+                tenChuHo: formData.hoTen,
+              });
+            }
+          } catch (err) {
+            console.error("Không thể cập nhật tên chủ hộ:", err);
+          }
+        }
+        
         alert("Cập nhật nhân khẩu thành công!");
       } else {
         await createNhanKhau(submitData);
@@ -575,7 +613,16 @@ function NhanKhauPage() {
                     value={formData.quanHeChuHo}
                     onChange={(e) => setFormData({ ...formData, quanHeChuHo: e.target.value })}
                   >
-                    <option value="Chủ hộ">Chủ hộ</option>
+                    <option
+                      value="Chủ hộ"
+                      disabled={
+                        editingItem?.quanHeChuHo === "Chủ hộ"
+                          ? false
+                          : formData.hoKhauId && hoKhauHasChuHo.has(Number(formData.hoKhauId))
+                      }
+                    >
+                      Chủ hộ
+                    </option>
                     <option value="Vợ/Chồng">Vợ/Chồng</option>
                     <option value="Con">Con</option>
                     <option value="Bố/Mẹ">Bố/Mẹ</option>
@@ -586,7 +633,17 @@ function NhanKhauPage() {
                   <label>Hộ khẩu <span className="required">*</span></label>
                   <select
                     value={formData.hoKhauId}
-                    onChange={(e) => setFormData({ ...formData, hoKhauId: e.target.value })}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      const hasChuHo = value ? hoKhauHasChuHo.has(Number(value)) : false;
+                      setFormData((prev) => {
+                        const next = { ...prev, hoKhauId: value };
+                        if (hasChuHo && prev.quanHeChuHo === "Chủ hộ" && prev.quanHeChuHo !== (editingItem?.quanHeChuHo || "")) {
+                          next.quanHeChuHo = "Vợ/Chồng";
+                        }
+                        return next;
+                      });
+                    }}
                     required
                     disabled={!!editingItem}
                   >

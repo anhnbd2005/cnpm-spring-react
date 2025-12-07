@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { Pie } from "react-chartjs-2";
+import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
 import { getAllHoKhau } from "../../../api/hoKhauApi";
 import {
   getAllNhanKhau,
@@ -7,6 +9,8 @@ import {
 } from "../../../api/nhanKhauApi";
 import NoPermission from "../NoPermission";
 import "./DashboardPage.css";
+
+ChartJS.register(ArcElement, Tooltip, Legend);
 
 function DashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -136,81 +140,95 @@ function DashboardPage() {
             </svg>
             Thống Kê Theo Giới Tính
           </h2>
-          <div className="gender-stats">
-            <div className="gender-item">
-              <div className="gender-label">Nam</div>
-              <div className="gender-bar-container">
-                <div
-                  className="gender-bar male"
-                  style={{
-                    width: `${Math.max(
-                      10,
-                      calculatePercentage(getGenderValue(stats.genderStats, "Nam"), genderTotal)
-                    )}%`,
-                  }}
-                >
-                  <span className="gender-count">
-                    {getGenderValue(stats.genderStats, "Nam")} (
-                    {calculatePercentage(
+          <div className="gender-pie-wrapper">
+            <Pie
+              data={{
+                labels: ["Nam", "Nữ"],
+                datasets: [
+                  {
+                    data: [
                       getGenderValue(stats.genderStats, "Nam"),
-                      genderTotal
-                    )}
-                    %)
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="gender-item">
-              <div className="gender-label">Nữ</div>
-              <div className="gender-bar-container">
-                <div
-                  className="gender-bar female"
-                  style={{
-                    width: `${Math.max(
-                      10,
-                      calculatePercentage(getGenderValue(stats.genderStats, "Nữ"), genderTotal)
-                    )}%`,
-                  }}
-                >
-                  <span className="gender-count">
-                    {getGenderValue(stats.genderStats, "Nữ")} (
-                    {calculatePercentage(
                       getGenderValue(stats.genderStats, "Nữ"),
-                      genderTotal
-                    )}
-                    %)
-                  </span>
-                </div>
-              </div>
-            </div>
-            {getGenderValue(stats.genderStats, "Khác") > 0 && (
-              <div className="gender-item">
-                <div className="gender-label">Khác</div>
-                <div className="gender-bar-container">
-                  <div
-                    className="gender-bar other"
-                    style={{
-                      width: `${Math.max(
-                        10,
-                        calculatePercentage(
-                          getGenderValue(stats.genderStats, "Khác"),
-                          genderTotal
-                        )
-                      )}%`,
-                    }}
-                  >
-                    <span className="gender-count">
-                      {getGenderValue(stats.genderStats, "Khác")} (
-                      {calculatePercentage(
-                        getGenderValue(stats.genderStats, "Khác"),
-                        genderTotal
-                      )}
-                      %)
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
+                    ],
+                    backgroundColor: ["#3B82F6", "#EC4899"],
+                    borderColor: ["#1E40AF", "#BE185D"],
+                    borderWidth: 2,
+                    hoverOffset: 10,
+                  },
+                ],
+              }}
+              options={{
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                  legend: {
+                    position: "bottom",
+                    labels: {
+                      padding: 15,
+                      font: {
+                        size: 13,
+                        weight: "600",
+                      },
+                    },
+                  },
+                  tooltip: {
+                    callbacks: {
+                      label: function (context) {
+                        const label = context.label || "";
+                        const value = context.parsed || 0;
+                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                        const percentage = ((value / total) * 100).toFixed(1);
+                        return `${label}: ${value} (${percentage}%)`;
+                      },
+                    },
+                    backgroundColor: "rgba(0, 0, 0, 0.8)",
+                    padding: 10,
+                    titleFont: { size: 13, weight: "bold" },
+                    bodyFont: { size: 12 },
+                  },
+                  datalabels: {
+                    color: "#fff",
+                    font: {
+                      weight: "bold",
+                      size: 14,
+                    },
+                    formatter: (value, context) => {
+                      const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                      const percentage = ((value / total) * 100).toFixed(1);
+                      return `${percentage}%`;
+                    },
+                  },
+                },
+              }}
+              plugins={[
+                {
+                  id: "textCenter",
+                  beforeDatasetsDraw(chart) {
+                    const { width, height, ctx } = chart;
+                    ctx.restore();
+
+                    const fontSize = (height / 200).toFixed(2);
+                    ctx.font = `bold ${fontSize}em sans-serif`;
+                    ctx.textBaseline = "middle";
+                    ctx.fillStyle = "#ffffff";
+
+                    const data = chart.data.datasets[0].data;
+                    const total = data.reduce((a, b) => a + b, 0);
+
+                    chart.getDatasetMeta(0).data.forEach((datapoint, index) => {
+                      const { x, y } = datapoint.tooltipPosition();
+                      const value = data[index];
+                      const percentage = ((value / total) * 100).toFixed(1);
+
+                      ctx.fillStyle = "#ffffff";
+                      ctx.textAlign = "center";
+                      ctx.font = `bold 14px sans-serif`;
+                      ctx.fillText(`${percentage}%`, x, y);
+                    });
+                  },
+                },
+              ]}
+            />
           </div>
         </div>
       )}
