@@ -109,6 +109,15 @@
   }
 }
 
+@keyframes gradientShift {
+  0%, 100% {
+    background-position: 0% center;
+  }
+  50% {
+    background-position: 100% center;
+  }
+}
+
 .login-title-left {
   color: white;
   font-weight: 700;
@@ -126,40 +135,55 @@
 
 .login-title {
   text-align: center;
-  color: #1e56a0;
-  font-size: 32px;
+  background: linear-gradient(90deg, #1e56a0, #00d4ff, #1e56a0);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-size: 36px;
   margin-bottom: 30px;
   font-weight: 700;
-  letter-spacing: 2px;
+  letter-spacing: 3px;
+  animation: gradientShift 3s ease-in-out infinite;
+  text-shadow: 0 0 30px rgba(0, 212, 255, 0.3);
+  filter: drop-shadow(0 2px 8px rgba(30, 86, 160, 0.4));
 }
 
 /* Label */
 .login-label {
-  font-weight: 600;
-  color: #1e56a0;
-  margin-bottom: 8px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #1e56a0, #00a8cc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 10px;
   display: block;
-  font-size: 14px;
+  font-size: 15px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
 }
 
 /* Input */
 .login-input {
   width: 100%;
-  padding: 12px 14px;
-  border-radius: 8px;
+  padding: 14px 16px;
+  border-radius: 10px;
   border: 2px solid #e0e0e0;
   font-size: 15px;
   box-sizing: border-box;
   margin-bottom: 15px;
-  transition: all 0.3s ease;
-  background: #f9f9f9;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  background: linear-gradient(135deg, #f9f9f9 0%, #ffffff 100%);
 }
 
 .login-input:focus {
   outline: none;
-  border-color: #1e56a0;
+  border-color: #00d4ff;
   background: white;
-  box-shadow: 0 0 0 3px rgba(30, 86, 160, 0.1);
+  box-shadow: 0 0 0 4px rgba(0, 212, 255, 0.15),
+              0 0 20px rgba(0, 212, 255, 0.3),
+              0 4px 12px rgba(30, 86, 160, 0.2);
+  transform: translateY(-2px);
 }
 
 /* WRAPPER + ICON MẮT */
@@ -208,70 +232,139 @@
 /* Button */
 .login-btn {
   width: 100%;
-  padding: 12px;
-  font-size: 16px;
-  font-weight: 600;
-  background: linear-gradient(135deg, #1e56a0 0%, #133e73 100%);
+  padding: 15px;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, #1e56a0 0%, #00d4ff 50%, #1e56a0 100%);
+  background-size: 200% auto;
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: 12px;
   cursor: pointer;
   display: block;
-  margin: 20px auto 0 auto;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 12px rgba(30, 86, 160, 0.3);
+  margin: 25px auto 0 auto;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 6px 20px rgba(0, 212, 255, 0.4),
+              0 0 40px rgba(0, 212, 255, 0.2),
+              inset 0 1px 3px rgba(255, 255, 255, 0.3);
+  position: relative;
+  overflow: hidden;
+  animation: buttonGlow 3s ease-in-out infinite;
+}
+
+.login-btn::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  transform: rotate(45deg);
+  animation: shine 3s infinite;
+}
+
+@keyframes buttonGlow {
+  0%, 100% {
+    background-position: 0% center;
+  }
+  50% {
+    background-position: 100% center;
+  }
+}
+
+@keyframes shine {
+  0% {
+    left: -50%;
+  }
+  100% {
+    left: 150%;
+  }
 }
 
 .login-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(30, 86, 160, 0.4);
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 10px 30px rgba(0, 212, 255, 0.6),
+              0 0 60px rgba(0, 212, 255, 0.4),
+              inset 0 1px 3px rgba(255, 255, 255, 0.5);
+  text-shadow: 0 0 20px rgba(255, 255, 255, 0.8);
 }
 
 .login-btn:active {
-  transform: translateY(0px);
-  box-shadow: 0 2px 8px rgba(30, 86, 160, 0.3);
+  transform: translateY(-1px) scale(0.98);
+  box-shadow: 0 4px 15px rgba(0, 212, 255, 0.5),
+              0 0 30px rgba(0, 212, 255, 0.3);
 }
 
 /* RADIO GROUP */
 .role-group {
   margin-bottom: 20px;
-  padding: 12px;
-  background: #f5f5f5;
-  border-radius: 8px;
+  padding: 16px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-radius: 12px;
+  border: 2px solid transparent;
+  background-image: linear-gradient(white, white),
+                    linear-gradient(135deg, #1e56a0, #00d4ff);
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  box-shadow: 0 4px 15px rgba(30, 86, 160, 0.1),
+              inset 0 1px 3px rgba(255, 255, 255, 0.8);
 }
 
 .role-option {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   margin-bottom: 8px;
   cursor: pointer;
-  padding: 6px;
-  border-radius: 6px;
-  transition: all 0.2s ease;
+  padding: 10px 12px;
+  border-radius: 8px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
 }
 
 .role-option:hover {
-  background: rgba(30, 86, 160, 0.1);
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.1), rgba(30, 86, 160, 0.1));
+  transform: translateX(5px);
+  box-shadow: 0 2px 8px rgba(0, 212, 255, 0.2);
 }
 
 .role-option input[type="radio"] {
-  width: 18px;
-  height: 18px;
-  accent-color: #1e56a0;
+  width: 20px;
+  height: 20px;
+  accent-color: #00d4ff;
   cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.role-option input[type="radio"]:checked {
+  filter: drop-shadow(0 0 8px rgba(0, 212, 255, 0.8));
+  transform: scale(1.1);
 }
 
 .role-text {
-  font-size: 15px;
-  color: #444;
+  font-size: 16px;
+  color: #555;
   font-weight: 500;
-  transition: all 0.2s ease;
+  transition: all 0.3s ease;
+  letter-spacing: 0.3px;
 }
 
 .role-option:hover .role-text {
   color: #1e56a0;
-  font-weight: 600;
+  font-weight: 700;
+  text-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+}
+
+.role-option:has(input[type="radio"]:checked) .role-text {
+  color: #1e56a0;
+  font-weight: 700;
+  background: linear-gradient(135deg, #1e56a0, #00d4ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 /* Lỗi đăng nhập */

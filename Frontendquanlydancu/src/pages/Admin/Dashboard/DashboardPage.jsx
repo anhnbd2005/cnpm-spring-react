@@ -91,7 +91,7 @@ function DashboardPage() {
             <rect x="14" y="14" width="7" height="7"></rect>
             <rect x="3" y="14" width="7" height="7"></rect>
           </svg>
-          Tổng Quan
+          Thống kê
         </h1>
         <button className="btn-refresh" onClick={loadAllStats}>
           🔄 Làm mới

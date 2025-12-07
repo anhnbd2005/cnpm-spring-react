@@ -12,7 +12,7 @@ function AdminLayout() {
   const menuItems = [
     {
       path: "/admin/dashboard",
-      label: "Thống Kê",
+      label: "Tổng Quan",
       icon: "chart",
       roles: ["ADMIN", "TOTRUONG", "KETOAN"],
     },
