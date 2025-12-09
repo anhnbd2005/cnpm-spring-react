@@ -36,6 +36,9 @@ public class NhanKhau {
     @Column(name = "quoc_tich")
     private String quocTich;
 
+    @Column(name = "que_quan")
+    private String queQuan;
+
     @Column(name = "nghe_nghiep")
     private String ngheNghiep;
 
