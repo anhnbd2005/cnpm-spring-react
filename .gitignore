@@ -81,5 +81,8 @@ docker/
 .env.production
 
 
-/frontend/
+/Frontendquanlydancu/Dockerfile
 /backend/queries/
+/Frontendquanlydancu/nginx.conf
+/Frontendquanlydancu/src/router/AppRouter.jsx
+/Frontendquanlydancu/src/pages/Login/LoginPage.jsx
