@@ -34,6 +34,9 @@ public class NhanKhauUpdateDto {
     @Schema(description = "Quốc tịch", example = "Việt Nam")
     private String quocTich;
 
+    @Schema(description = "Quê Quán", example = "Bách khoa, Bạch Mai, Hà Nội")
+    private String queQuan;
+
     @Schema(description = "Nghề nghiệp", example = "Kỹ sư")
     private String ngheNghiep;
 

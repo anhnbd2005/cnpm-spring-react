@@ -40,6 +40,10 @@ public class NhanKhauRequestDto {
     @NotNull(message = "Quốc tịch không được để trống")
     private String quocTich;
 
+    @Schema(description = "Quê Quán", example = "Bách khoa, Bạch Mai, Hà Nội")
+    @NotNull(message = "Quê quán không được để trống")
+    private String queQuan;
+
     @Schema(description = "Nghề nghiệp", example = "Kỹ sư")
     private String ngheNghiep;
 

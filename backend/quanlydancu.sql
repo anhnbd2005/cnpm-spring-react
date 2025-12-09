@@ -32,6 +32,7 @@ CREATE TABLE nhan_khau (
     gioi_tinh VARCHAR(20),
     dan_toc VARCHAR(50),
     quoc_tich VARCHAR(50),
+    que_quan VARCHAR(255),
     nghe_nghiep VARCHAR(255),
     cmnd_cccd VARCHAR(20),
     ngay_cap DATE,

@@ -81,6 +81,7 @@ public class NhanKhauService {
                 .gioiTinh(dto.getGioiTinh())
                 .danToc(dto.getDanToc())
                 .quocTich(dto.getQuocTich())
+                .queQuan(dto.getQueQuan())
                 .ngheNghiep(dto.getNgheNghiep())
                 .cmndCccd(dto.getCmndCccd())
                 .ngayCap(dto.getNgayCap())
@@ -159,6 +160,13 @@ public class NhanKhauService {
             existing.setQuocTich(newVal);
             changed = true;
             addChangeLog(pendingLogs, "quốc tịch", oldVal, newVal);
+        }
+        if (dto.getQueQuan() != null && !Objects.equals(existing.getQueQuan(), dto.getQueQuan())) {
+            String oldVal = existing.getQueQuan();
+            String newVal = existing.getQueQuan();
+            existing.setQueQuan(newVal);
+            changed = true;
+            addChangeLog(pendingLogs, "quê quán", oldVal, newVal);
         }
         if (dto.getNgheNghiep() != null && !Objects.equals(existing.getNgheNghiep(), dto.getNgheNghiep())) {
             String oldVal = existing.getNgheNghiep();
@@ -520,26 +528,6 @@ public class NhanKhauService {
 
     // Mapper: Entity -> Response DTO
     private NhanKhauResponseDto toResponseDTO(NhanKhau nk) {
-        // Compute current status based on tam_vang/tam_tru dates
-//        LocalDate now = LocalDate.now();
-//        String trangThaiHienTai = "THUONG_TRU"; // default
-//
-//        // Highest priority: citizen marked as deceased
-//        if (nk.getGhiChu() != null && nk.getGhiChu().trim().equalsIgnoreCase("đã mất")) {
-//            trangThaiHienTai = "DA_KHAI_TU";
-//        }
-//        // Check tam_vang next (higher priority than tam_tru)
-//        else if (nk.getTamVangTu() != null &&
-//            !now.isBefore(nk.getTamVangTu()) &&
-//            (nk.getTamVangDen() == null || !now.isAfter(nk.getTamVangDen()))) {
-//            trangThaiHienTai = "TAM_VANG";
-//        }
-//        // Check tam_tru second
-//        else if (nk.getTamTruTu() != null &&
-//                 !now.isBefore(nk.getTamTruTu()) &&
-//                 (nk.getTamTruDen() == null || !now.isAfter(nk.getTamTruDen()))) {
-//            trangThaiHienTai = "TAM_TRU";
-//        }
         
         return NhanKhauResponseDto.builder()
                 .id(nk.getId())
@@ -548,6 +536,7 @@ public class NhanKhauService {
                 .gioiTinh(nk.getGioiTinh())
                 .danToc(nk.getDanToc())
                 .quocTich(nk.getQuocTich())
+                .queQuan(nk.getQueQuan())
                 .ngheNghiep(nk.getNgheNghiep())
                 .cmndCccd(nk.getCmndCccd())
                 .ngayCap(nk.getNgayCap())
