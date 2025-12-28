@@ -1,0 +1,92 @@
+# Operating System
+.DS_Store
+Thumbs.db
+
+# IDE - IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Build Outputs & Caches
+/target/
+/dist/
+/.vite/
+/.cache/
+*.log
+
+# Dependencies
+/node_modules/
+
+# Maven
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+# Spring Boot
+HELP.md
+
+# STS
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+# VS Code
+.vscode/
+
+# ===== DOCKER (PRIVATE FOR MY MACHINE ONLY) =====
+# All Docker-related files are excluded from Git
+# These files exist only on the project owner's local machine
+
+# Docker Compose files
+**/docker-compose.yml
+**/docker-compose.*.yml
+docker-compose.yml
+docker-compose.*.yml
+docker-compose.override.yml
+docker-compose.prod.yml
+        
+# Dockerfiles
+**/Dockerfile
+**/*.dockerfile
+Dockerfile
+*.dockerfile
+Dockerfile.local
+
+# Docker ignore files
+**/.dockerignore
+.dockerignore
+
+# Docker directories
+**/docker/
+docker/
+
+# Docker environment files
+**/.env.docker
+**/.env.production
+.env.docker
+.env.production
+
+
+/Frontendquanlydancu/Dockerfile
+/backend/queries/
+/Frontendquanlydancu/nginx.conf
+/Frontendquanlydancu/src/router/AppRouter.jsx
+/Frontendquanlydancu/src/pages/Login/LoginPage.jsx
+
+/backend/test/
+/backend/docs/
+/backend/queries/
