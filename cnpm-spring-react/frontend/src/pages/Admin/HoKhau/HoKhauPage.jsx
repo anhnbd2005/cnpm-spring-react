@@ -61,6 +61,7 @@ function HoKhauPage() {
   });
   const [validationErrors, setValidationErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
   const role = localStorage.getItem("role");
 
   const chuHoAge = useMemo(() => calculateAge(chuHoData.ngaySinh), [chuHoData.ngaySinh]);
@@ -89,6 +90,17 @@ function HoKhauPage() {
       setLoading(false);
     }
   };
+
+  // Filter Logic: Client-side search for speed and simplicity
+  const filteredHoKhaus = hoKhaus.filter((hk) => {
+    const keyword = searchTerm.trim().toLowerCase();
+    if (!keyword) return true;
+
+    const soHoKhau = (hk.soHoKhau || "").toLowerCase();
+    const tenChuHo = (hk.tenChuHo || "").toLowerCase();
+
+    return soHoKhau.includes(keyword) || tenChuHo.includes(keyword);
+  });
 
   const handleOpenModal = (item = null) => {
     if (item) {
@@ -242,7 +254,7 @@ function HoKhauPage() {
       if (editingItem) {
         // Cập nhật hộ khẩu
         await updateHoKhau(editingItem.id, formData);
-        
+
         // Nếu tên chủ hộ đã thay đổi, cập nhật nhân khẩu là chủ hộ
         if (editingItem.tenChuHo !== formData.tenChuHo) {
           try {
@@ -251,7 +263,7 @@ function HoKhauPage() {
             const chuHoNhanKhau = allNhanKhaus.find(
               (nk) => nk.hoKhauId === editingItem.id && nk.quanHeChuHo === "Chủ hộ"
             );
-            
+
             if (chuHoNhanKhau) {
               // Cập nhật tên nhân khẩu
               await updateNhanKhau(chuHoNhanKhau.id, {
@@ -263,7 +275,7 @@ function HoKhauPage() {
             console.error("Không thể cập nhật tên nhân khẩu:", err);
           }
         }
-        
+
         alert("Cập nhật hộ khẩu thành công!");
       } else {
         if (!chuHoData.queQuan.trim()) {
@@ -317,7 +329,7 @@ function HoKhauPage() {
 
           alert(
             err.response?.data?.message ||
-              "Không thể thêm nhân khẩu chủ hộ. Hộ khẩu chưa được lưu. Vui lòng thử lại."
+            "Không thể thêm nhân khẩu chủ hộ. Hộ khẩu chưa được lưu. Vui lòng thử lại."
           );
           throw err;
         }
@@ -364,6 +376,16 @@ function HoKhauPage() {
         </div>
       </div>
 
+      <div className="search-bar">
+        <input
+          type="text"
+          placeholder="Tìm kiếm theo số hộ khẩu hoặc tên chủ hộ..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="search-input"
+        />
+      </div>
+
       {error && <div className="error-message">{error}</div>}
 
       <div className="table-container">
@@ -380,14 +402,14 @@ function HoKhauPage() {
             </tr>
           </thead>
           <tbody>
-            {hoKhaus.length === 0 ? (
+            {filteredHoKhaus.length === 0 ? (
               <tr>
                 <td colSpan={canEdit ? 7 : 6} className="empty-message">
-                  Chưa có hộ khẩu nào
+                  {searchTerm ? "Không tìm thấy kết quả" : "Chưa có hộ khẩu nào"}
                 </td>
               </tr>
             ) : (
-              hoKhaus.map((hk, index) => (
+              filteredHoKhaus.map((hk, index) => (
                 <tr key={hk.id}>
                   <td>{index + 1}</td>
                   <td>{hk.soHoKhau || "-"}</td>
@@ -426,7 +448,7 @@ function HoKhauPage() {
         </table>
       </div>
 
-      {/* Modal thêm/sửa */}
+      {/* Modal thêm/sửa, giữ nguyên phần modal */}
       {showModal && (
         <div className="modal-overlay" onClick={handleCloseModal}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -458,14 +480,13 @@ function HoKhauPage() {
                 <input
                   type="text"
                   value={formData.tenChuHo}
-                  onChange={(e) =>
-                    {
-                      const value = e.target.value;
-                      setFormData({ ...formData, tenChuHo: value });
-                      if (!editingItem) {
-                        setChuHoData((prev) => ({ ...prev, hoTen: value }));
-                      }
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setFormData({ ...formData, tenChuHo: value });
+                    if (!editingItem) {
+                      setChuHoData((prev) => ({ ...prev, hoTen: value }));
                     }
+                  }
                   }
                   required
                 />
