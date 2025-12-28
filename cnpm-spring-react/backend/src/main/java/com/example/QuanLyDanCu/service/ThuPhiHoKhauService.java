@@ -79,6 +79,7 @@ public class ThuPhiHoKhauService {
      */
     public List<ThuPhiHoKhauResponseDto> getAll() {
         return repo.findAll().stream()
+                .filter(record -> record.getHoKhau() != null && !Boolean.TRUE.equals(record.getHoKhau().getIsDeleted()))
                 .sorted((t1, t2) -> {
                     String so1 = t1.getHoKhau().getSoHoKhau();
                     String so2 = t2.getHoKhau().getSoHoKhau();
@@ -137,7 +138,7 @@ public class ThuPhiHoKhauService {
                         (left, right) -> left,
                         LinkedHashMap::new));
 
-        List<HoKhau> households = hoKhauRepo.findAllByOrderByIdAsc();
+        List<HoKhau> households = hoKhauRepo.findAllByIsDeletedFalseOrderByIdAsc();
         households.sort(Comparator.comparing(
                 HoKhau::getSoHoKhau,
                 Comparator.nullsLast(String::compareTo)));

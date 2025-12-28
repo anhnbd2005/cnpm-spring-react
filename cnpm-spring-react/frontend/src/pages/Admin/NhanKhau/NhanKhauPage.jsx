@@ -71,6 +71,10 @@ function NhanKhauPage() {
     ngayKetThuc: "",
     lyDo: "",
   });
+  // State for Confirmation Dialog when transferring last member
+  const [showConfirmDeleteHoKhau, setShowConfirmDeleteHoKhau] = useState(false);
+  const [pendingPayload, setPendingPayload] = useState(null);
+
   const [validationErrors, setValidationErrors] = useState({});
   const [submitError, setSubmitError] = useState("");
   const role = localStorage.getItem("role");
@@ -384,25 +388,19 @@ function NhanKhauPage() {
         newChuHoId: formData.newChuHoId ? Number(formData.newChuHoId) : null,
       };
       if (editingItem) {
-        // Cập nhật nhân khẩu
-        await updateNhanKhau(editingItem.id, submitData);
-
-        // Nếu đây là chủ hộ và tên đã thay đổi, cập nhật tên chủ hộ trong hộ khẩu
-        if (editingItem.quanHeChuHo === "Chủ hộ" && editingItem.hoTen !== formData.hoTen) {
-          try {
-            const hoKhau = hoKhaus.find((hk) => hk.id === Number(formData.hoKhauId));
-            if (hoKhau) {
-              await updateHoKhau(hoKhau.id, {
-                ...hoKhau,
-                tenChuHo: formData.hoTen,
-              });
-            }
-          } catch (err) {
-            console.error("Không thể cập nhật tên chủ hộ:", err);
+        // Validation: Hộ khẩu cũ bị xóa?
+        if (submitData.hoKhauId !== editingItem.hoKhauId) {
+          const livingInOld = nhanKhaus.filter(nk => Number(nk.hoKhauId) === Number(editingItem.hoKhauId) && nk.trangThai !== "KHAI_TU").length;
+          // livingInOld bao gồm cả người đang chuyển. Nếu chỉ còn 1 người (chính là mình) -> Cảnh báo
+          if (livingInOld <= 1) {
+            setPendingPayload(submitData);
+            setShowConfirmDeleteHoKhau(true);
+            return;
           }
         }
 
-        alert("Cập nhật nhân khẩu thành công!");
+        // Cập nhật nhân khẩu
+        await executeUpdate(submitData);
       } else {
         await createNhanKhau(submitData);
         alert("Tạo nhân khẩu thành công!");
@@ -414,6 +412,43 @@ function NhanKhauPage() {
       setSubmitError(errorMsg);
     }
   };
+
+  const executeUpdate = async (data) => {
+    await updateNhanKhau(editingItem.id, data);
+
+    // Nếu đây là chủ hộ và tên đã thay đổi, cập nhật tên chủ hộ trong hộ khẩu
+    if (editingItem.quanHeChuHo === "Chủ hộ" && editingItem.hoTen !== formData.hoTen) {
+      try {
+        const hoKhau = hoKhaus.find((hk) => hk.id === Number(formData.hoKhauId));
+        if (hoKhau) {
+          await updateHoKhau(hoKhau.id, {
+            ...hoKhau,
+            tenChuHo: formData.hoTen,
+          });
+        }
+      } catch (err) {
+        console.error("Không thể cập nhật tên chủ hộ:", err);
+      }
+    }
+    alert("Cập nhật nhân khẩu thành công!");
+  };
+
+  const handleConfirmTransfer = async () => {
+    if (!pendingPayload) return;
+    try {
+      await executeUpdate(pendingPayload);
+      setShowConfirmDeleteHoKhau(false);
+      setPendingPayload(null);
+      handleCloseModal();
+      loadNhanKhaus();
+      alert("Đã chuyển hộ khẩu. Hộ khẩu cũ đã bị xóa khỏi hệ thống.");
+    } catch (err) {
+      const errorMsg = err.response?.data?.message || "Có lỗi xảy ra!";
+      setSubmitError(errorMsg);
+      setShowConfirmDeleteHoKhau(false);
+    }
+  };
+
 
   const handleActionSubmit = async (e) => {
     e.preventDefault();
@@ -1106,6 +1141,27 @@ function NhanKhauPage() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )
+      }
+      {/* Modal xác nhận xóa hộ khẩu khi chuyển đi */}
+      {
+        showConfirmDeleteHoKhau && (
+          <div className="modal-overlay">
+            <div className="modal-content" style={{ maxWidth: '400px' }}>
+              <div className="modal-header" style={{ borderBottom: 'none' }}>
+                <h3 style={{ color: '#dc3545' }}>⚠ Cảnh báo</h3>
+              </div>
+              <div className="modal-body">
+                <p>Bạn là thành viên duy nhất của hộ khẩu hiện tại.</p>
+                <p>Sau khi bạn chuyển đi, <strong>Hộ khẩu cũ sẽ bị xóa vĩnh viễn</strong>.</p>
+                <p>Bạn có chắc chắn muốn tiếp tục?</p>
+              </div>
+              <div className="form-actions">
+                <button className="btn-cancel" onClick={() => setShowConfirmDeleteHoKhau(false)}>Hủy</button>
+                <button className="btn-submit" style={{ backgroundColor: '#dc3545' }} onClick={handleConfirmTransfer}>Xác nhận chuyển</button>
+              </div>
             </div>
           </div>
         )

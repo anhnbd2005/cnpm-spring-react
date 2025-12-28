@@ -61,8 +61,15 @@ public class NhanKhauService {
         if (dto.getHoKhauId() == null) {
             throw new BadRequestException("Hộ khẩu không được để trống");
         }
-        if (!hoKhauRepo.existsById(dto.getHoKhauId())) {
-            throw new NotFoundException("Không tìm thấy hộ khẩu id = " + dto.getHoKhauId());
+        // Check household exists and potentially revive it
+        com.example.QuanLyDanCu.entity.HoKhau hk = hoKhauRepo.findById(dto.getHoKhauId())
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy hộ khẩu id = " + dto.getHoKhauId()));
+
+        // REVIVAL_LOGIC: Nếu hộ khẩu đang bị xóa mềm (ẩn), hãy hiện lại vì có thành
+        // viên mới
+        if (Boolean.TRUE.equals(hk.getIsDeleted())) {
+            hk.setIsDeleted(false);
+            hoKhauRepo.save(hk);
         }
 
         // Kiểm tra CCCD không trùng lặp
@@ -96,10 +103,10 @@ public class NhanKhauService {
 
         // SYNC_OWNER: Nếu là chủ hộ mới, cập nhật tên chủ hộ trong bảng HoKhau
         if ("Chủ hộ".equalsIgnoreCase(saved.getQuanHeChuHo())) {
-            com.example.QuanLyDanCu.entity.HoKhau hk = hoKhauRepo.findById(saved.getHoKhauId())
+            com.example.QuanLyDanCu.entity.HoKhau hkUpdated = hoKhauRepo.findById(saved.getHoKhauId())
                     .orElseThrow(() -> new NotFoundException("Không tìm thấy hộ khẩu"));
-            hk.setTenChuHo(saved.getHoTen());
-            hoKhauRepo.save(hk);
+            hkUpdated.setTenChuHo(saved.getHoTen());
+            hoKhauRepo.save(hkUpdated);
         }
 
         bienDongService.log(
@@ -320,10 +327,22 @@ public class NhanKhauService {
             // STRICT_RULE_TRANSFER: Nếu hộ cũ không còn ai (sống) -> Xóa Hộ Khẩu
             long remaining = nhanKhauRepo.countByHoKhauIdAndTrangThaiNot(oldHoKhauId, "KHAI_TU");
             if (remaining == 0) {
-                // Nếu không còn thành viên sống nào, xóa luôn hộ khẩu (bao gồm record khai tử
-                // nếu có)
-                hoKhauRepo.deleteById(oldHoKhauId);
+                // Nếu không còn thành viên sống nào, đánh dấu xóa mềm hộ khẩu
+                hoKhauRepo.findById(oldHoKhauId).ifPresent(hk -> {
+                    hk.setIsDeleted(true);
+                    hoKhauRepo.save(hk);
+                });
             }
+        }
+
+        // REVIVAL_LOGIC: Khi chuyển đến hộ mới, nếu hộ đó đang bị ẩn, hãy hiện lại
+        if (saved.getHoKhauId() != null) {
+            hoKhauRepo.findById(saved.getHoKhauId()).ifPresent(hk -> {
+                if (Boolean.TRUE.equals(hk.getIsDeleted())) {
+                    hk.setIsDeleted(false);
+                    hoKhauRepo.save(hk);
+                }
+            });
         }
 
         triggerFeeRecalculation(saved.getHoKhauId());
@@ -374,13 +393,16 @@ public class NhanKhauService {
             // Kiểm tra xem có record nào khác không (bao gồm cả chết)
             long anyMembers = nhanKhauRepo.countByHoKhauId(hoKhauId);
             if (anyMembers == 0) { // Đã xóa hết sạch
-                hoKhauRepo.deleteById(hoKhauId);
+                hoKhauRepo.findById(hoKhauId).ifPresent(hk -> {
+                    hk.setIsDeleted(true);
+                    hoKhauRepo.save(hk);
+                });
             } else {
-                // Nếu còn người KHAI_TU, logic deleteById(hoKhau) sẽ cascade xóa hết họ (nếu DB
-                // config cascade).
-                // Nếu không cascade, sẽ lỗi.
-                // Nhưng user yêu cầu "hộ khẩu biến mất", ta cứ thử delete.
-                hoKhauRepo.deleteById(hoKhauId);
+                // Xóa mềm hộ khẩu
+                hoKhauRepo.findById(hoKhauId).ifPresent(hk -> {
+                    hk.setIsDeleted(true);
+                    hoKhauRepo.save(hk);
+                });
             }
         } else {
             // SYNC_OWNER: (Logic cũ) Nếu xóa chủ hộ (trường hợp count > 1 đã chặn ở trên,
@@ -526,7 +548,8 @@ public class NhanKhauService {
         // STRICT_RULE_DEATH: Nếu là người sống cuối cùng -> Xóa luôn hộ khẩu
         if (livingMembers <= 1) {
             hoKhauRepo.findById(saved.getHoKhauId()).ifPresent(hk -> {
-                hoKhauRepo.delete(hk);
+                hk.setIsDeleted(true);
+                hoKhauRepo.save(hk);
             });
         }
 
