@@ -141,6 +141,24 @@ public class NhanKhauService {
         // Validate CCCD based on age
         validateCccdByAge(finalNgaySinh, finalCmndCccd, finalNgayCap, finalNoiCap);
 
+        // REVIVAL_LOGIC_CHANGE_STATUS: Undo Khai Tu (Chuyển từ KHAI_TU -> trạng thái
+        // khác)
+        if (dto.getTrangThai() != null && !"KHAI_TU".equals(dto.getTrangThai())
+                && "KHAI_TU".equals(existing.getTrangThai())) {
+
+            // Check if household has any active members (excluding this one, as it's still
+            // KHAI_TU in DB)
+            long activeCount = nhanKhauRepo.countByHoKhauIdAndTrangThaiNot(existing.getHoKhauId(), "KHAI_TU");
+
+            if (activeCount == 0) {
+                // Scenario A: Household Empty -> Force Owner
+                // Override input to ensure they become owner
+                dto.setQuanHeChuHo("Chủ hộ");
+            }
+            // Scenario B: has members -> existing logic allows user to pick role or keeps
+            // existing.
+        }
+
         // Cập nhật các trường thông tin cá nhân
         if (dto.getHoTen() != null && !Objects.equals(existing.getHoTen(), dto.getHoTen())) {
             String oldVal = existing.getHoTen();
@@ -225,6 +243,13 @@ public class NhanKhauService {
             existing.setGhiChu(newVal);
             changed = true;
             addChangeLog(pendingLogs, "ghi chú", oldVal, newVal);
+        }
+        if (dto.getTrangThai() != null && !Objects.equals(existing.getTrangThai(), dto.getTrangThai())) {
+            String oldVal = existing.getTrangThai();
+            String newVal = dto.getTrangThai();
+            existing.setTrangThai(newVal);
+            changed = true;
+            addChangeLog(pendingLogs, "trạng thái", oldVal, newVal);
         }
         if (dto.getHoKhauId() != null && !Objects.equals(existing.getHoKhauId(), dto.getHoKhauId())) {
             // STRICT_RULE_TRANSFER: Kiểm tra trước khi chuyển

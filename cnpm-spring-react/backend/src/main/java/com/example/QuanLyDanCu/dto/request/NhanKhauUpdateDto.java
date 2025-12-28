@@ -60,4 +60,7 @@ public class NhanKhauUpdateDto {
 
     @Schema(description = "ID chủ hộ mới (bắt buộc nếu thay đổi chủ hộ hiện tại)", example = "10")
     private Long newChuHoId;
+
+    @Schema(description = "Trạng thái", example = "Thường trú")
+    private String trangThai;
 }

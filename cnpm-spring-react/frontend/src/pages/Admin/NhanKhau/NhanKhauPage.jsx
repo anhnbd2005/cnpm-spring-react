@@ -63,6 +63,7 @@ function NhanKhauPage() {
     ghiChu: "",
     hoKhauId: "",
     newChuHoId: "", // Field mới: ID của chủ hộ được chọn thay thế
+    trangThai: "Thường trú", // Field mới: Trạng thái nhân khẩu
   });
   // Danh sách ứng viên cho vị trí Chủ hộ mới (cùng hộ khẩu, trừ bản thân)
   const [otherMembers, setOtherMembers] = useState([]);
@@ -180,6 +181,7 @@ function NhanKhauPage() {
         ghiChu: item.ghiChu || "",
         hoKhauId: item.hoKhauId || "",
         newChuHoId: "",
+        trangThai: item.trangThai || "Thường trú",
       });
       // Nếu đang sửa Chủ hộ, tìm các thành viên khác để chuẩn bị cho việc chuyển quyền
       if (item.quanHeChuHo === "Chủ hộ" && item.hoKhauId) {
@@ -205,6 +207,7 @@ function NhanKhauPage() {
         quanHeChuHo: "Chủ hộ",
         ghiChu: "",
         hoKhauId: "",
+        trangThai: "Thường trú",
       });
     }
     setShowModal(true);
@@ -851,6 +854,20 @@ function NhanKhauPage() {
                     onChange={(e) => setFormData({ ...formData, danToc: e.target.value })}
                     required
                   />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Trạng thái</label>
+                  <select
+                    value={formData.trangThai}
+                    onChange={(e) => setFormData({ ...formData, trangThai: e.target.value })}
+                  >
+                    <option value="Thường trú">Thường trú</option>
+                    <option value="Tạm trú">Tạm trú</option>
+                    <option value="Tạm vắng">Tạm vắng</option>
+                    <option value="KHAI_TU">Đã mất (Khai tử)</option>
+                  </select>
                 </div>
               </div>
               <div className="form-row">
