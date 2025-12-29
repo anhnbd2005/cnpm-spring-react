@@ -1,33 +1,50 @@
 version: '3.8'
 
 services:
-  # --- Service Database (Quan trọng nhất) ---
   db:
-    image: postgres:16
+    image: postgres:15
     container_name: quanlydancu_db
     ports:
       - "5432:5432"
     environment:
-      - POSTGRES_DB=quanlydancu
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=123456 # Mật khẩu đơn giản để test local
+      POSTGRES_DB: quanlydancu
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "123456"
     volumes:
-      - db_data:/var/lib/postgresql/data
-    restart: always
-  # --- Service Backend (Tùy chọn) ---
-  # Phần này chỉ chạy được nếu dự án có sẵn Dockerfile
-  # Nếu lỗi, bạn xóa phần 'app' này đi và chạy backend bằng IntelliJ
-  # app:
-  #   build: .
-  #   container_name: quanlydancu_backend
-  #   ports:
-  #     - "8080:8080"
-  #   depends_on:
-  #     - db
-  #   environment:
-  #     - SPRING_DATASOURCE_URL=jdbc:postgresql://db:5432/QuanLyDanCu
-  #     - SPRING_DATASOURCE_USERNAME=postgres
-  #     - SPRING_DATASOURCE_PASSWORD=123456
+      - db_data_pg15:/var/lib/postgresql/data
+      - ./backend/quanlydancu.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d quanlydancu"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    container_name: quanlydancu_backend
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/quanlydancu
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: "123456"
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: quanlydancu_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
 
 volumes:
-  db_data:
+  db_data_pg15:
