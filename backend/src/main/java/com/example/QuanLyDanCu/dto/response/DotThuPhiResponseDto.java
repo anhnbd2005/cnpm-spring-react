@@ -7,7 +7,11 @@ import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 @Schema(description = "Response DTO for DotThuPhi entity")
 public class DotThuPhiResponseDto {
 
@@ -28,5 +32,8 @@ public class DotThuPhiResponseDto {
 
     @Schema(description = "Định mức (VND)", example = "50000")
     private BigDecimal dinhMuc;
+
+    @Schema(description = "True: Thu theo đợt. False: Thu theo tháng")
+    private Boolean thuTheoDot;
 
 }

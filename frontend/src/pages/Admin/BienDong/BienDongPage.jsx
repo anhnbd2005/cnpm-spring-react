@@ -11,6 +11,7 @@ function BienDongPage() {
   const [nhanKhaus, setNhanKhaus] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
   const role = localStorage.getItem("role");
 
   // Kiểm tra quyền: ADMIN, TOTRUONG, KETOAN
@@ -47,6 +48,12 @@ function BienDongPage() {
     return hoKhau?.soHoKhau || "-";
   };
 
+  const getTenChuHo = (hoKhauId) => {
+    if (!hoKhauId) return "-";
+    const hoKhau = hoKhaus.find((hk) => hk.id === hoKhauId);
+    return hoKhau?.tenChuHo || "-";
+  };
+
   const getTenNhanKhau = (nhanKhauId) => {
     if (!nhanKhauId) return "-";
     const nhanKhau = nhanKhaus.find((nk) => nk.id === nhanKhauId);
@@ -70,6 +77,17 @@ function BienDongPage() {
     return labels[loai] || loai;
   };
 
+  // Filter Logic
+  const filteredBienDongs = bienDongs.filter((bd) => {
+    const keyword = searchTerm.trim().toLowerCase();
+    if (!keyword) return true;
+
+    const soHoKhau = getSoHoKhau(bd.hoKhauId).toLowerCase();
+    const tenChuHo = getTenChuHo(bd.hoKhauId).toLowerCase();
+
+    return soHoKhau.includes(keyword) || tenChuHo.includes(keyword);
+  });
+
   if (loading) {
     return <div className="page-loading">Đang tải...</div>;
   }
@@ -78,9 +96,21 @@ function BienDongPage() {
     <div className="bien-dong-page">
       <div className="page-header">
         <h1 className="page-title">Lịch sử thay đổi</h1>
-        <button className="btn-refresh" onClick={loadAllData}>
-          🔄 Làm mới
-        </button>
+        <div className="header-actions">
+          <button className="btn-refresh" onClick={loadAllData}>
+            🔄 Làm mới
+          </button>
+        </div>
+      </div>
+
+      <div className="search-bar">
+        <input
+          type="text"
+          placeholder="Tìm theo số hộ khẩu hoặc tên chủ hộ..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="search-input"
+        />
       </div>
 
       {error && <div className="error-message">{error}</div>}
@@ -98,14 +128,14 @@ function BienDongPage() {
             </tr>
           </thead>
           <tbody>
-            {bienDongs.length === 0 ? (
+            {filteredBienDongs.length === 0 ? (
               <tr>
                 <td colSpan="6" className="empty-message">
-                  Chưa có biến động nào
+                  {searchTerm ? "Không tìm thấy kết quả phù hợp" : "Chưa có biến động nào"}
                 </td>
               </tr>
             ) : (
-              bienDongs.map((bd, index) => (
+              filteredBienDongs.map((bd, index) => (
                 <tr key={bd.id}>
                   <td>{index + 1}</td>
                   <td>

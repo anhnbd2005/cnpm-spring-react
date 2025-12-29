@@ -53,6 +53,26 @@
   background: #138496;
 }
 
+.search-bar {
+  margin-bottom: 20px;
+}
+
+.search-input {
+  width: 100%;
+  max-width: 400px;
+  padding: 12px 16px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: all 0.3s;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #1e56a0;
+  box-shadow: 0 0 0 3px rgba(30, 86, 160, 0.1);
+}
+
 .page-loading {
   text-align: center;
   padding: 40px;
