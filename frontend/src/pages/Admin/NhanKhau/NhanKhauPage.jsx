@@ -62,12 +62,20 @@ function NhanKhauPage() {
     quanHeChuHo: "Chủ hộ",
     ghiChu: "",
     hoKhauId: "",
+    newChuHoId: "", // Field mới: ID của chủ hộ được chọn thay thế
+    trangThai: "Thường trú", // Field mới: Trạng thái nhân khẩu
   });
+  // Danh sách ứng viên cho vị trí Chủ hộ mới (cùng hộ khẩu, trừ bản thân)
+  const [otherMembers, setOtherMembers] = useState([]);
   const [actionFormData, setActionFormData] = useState({
     ngayBatDau: "",
     ngayKetThuc: "",
     lyDo: "",
   });
+  // State for Confirmation Dialog when transferring last member
+  const [showConfirmDeleteHoKhau, setShowConfirmDeleteHoKhau] = useState(false);
+  const [pendingPayload, setPendingPayload] = useState(null);
+
   const [validationErrors, setValidationErrors] = useState({});
   const [submitError, setSubmitError] = useState("");
   const role = localStorage.getItem("role");
@@ -92,6 +100,9 @@ function NhanKhauPage() {
   if (!allowedRoles.includes(role)) {
     return <NoPermission />;
   }
+
+  // Calculate Lock State: Locked if originally Dead AND still Dead in form
+  const isLocked = (editingItem?.trangThai === 'KHAI_TU' || editingItem?.trangThai === 'Đã mất') && (formData.trangThai === 'KHAI_TU' || formData.trangThai === 'Đã mất');
 
   useEffect(() => {
     loadNhanKhaus();
@@ -172,7 +183,17 @@ function NhanKhauPage() {
         quanHeChuHo: item.quanHeChuHo || "Chủ hộ",
         ghiChu: item.ghiChu || "",
         hoKhauId: item.hoKhauId || "",
+        newChuHoId: "",
+        trangThai: item.trangThai || "Thường trú",
       });
+      // Nếu đang sửa Chủ hộ, tìm các thành viên khác để chuẩn bị cho việc chuyển quyền
+      if (item.quanHeChuHo === "Chủ hộ" && item.hoKhauId) {
+        setOtherMembers(
+          nhanKhaus.filter(nk => Number(nk.hoKhauId) === Number(item.hoKhauId) && nk.id !== item.id)
+        );
+      } else {
+        setOtherMembers([]);
+      }
     } else {
       setEditingItem(null);
       setFormData({
@@ -189,6 +210,7 @@ function NhanKhauPage() {
         quanHeChuHo: "Chủ hộ",
         ghiChu: "",
         hoKhauId: "",
+        trangThai: "Thường trú",
       });
     }
     setShowModal(true);
@@ -336,7 +358,7 @@ function NhanKhauPage() {
       alert("Vui lòng nhập quê quán");
       return;
     }
-    
+
     // Validate form
     const errors = validateForm();
     if (Object.keys(errors).length > 0) {
@@ -346,7 +368,7 @@ function NhanKhauPage() {
     }
     setValidationErrors({});
     setSubmitError("");
-    
+
     const selectedHoKhauHasChuHo = formData.hoKhauId
       ? hoKhauHasChuHo.has(Number(formData.hoKhauId))
       : false;
@@ -369,27 +391,22 @@ function NhanKhauPage() {
         hoKhauId: Number(formData.hoKhauId),
         ngaySinh: formData.ngaySinh || null,
         ngayCap: isUnder14 ? null : formData.ngayCap || null,
+        newChuHoId: formData.newChuHoId ? Number(formData.newChuHoId) : null,
       };
       if (editingItem) {
-        // Cập nhật nhân khẩu
-        await updateNhanKhau(editingItem.id, submitData);
-        
-        // Nếu đây là chủ hộ và tên đã thay đổi, cập nhật tên chủ hộ trong hộ khẩu
-        if (editingItem.quanHeChuHo === "Chủ hộ" && editingItem.hoTen !== formData.hoTen) {
-          try {
-            const hoKhau = hoKhaus.find((hk) => hk.id === Number(formData.hoKhauId));
-            if (hoKhau) {
-              await updateHoKhau(hoKhau.id, {
-                ...hoKhau,
-                tenChuHo: formData.hoTen,
-              });
-            }
-          } catch (err) {
-            console.error("Không thể cập nhật tên chủ hộ:", err);
+        // Validation: Hộ khẩu cũ bị xóa?
+        if (submitData.hoKhauId !== editingItem.hoKhauId) {
+          const livingInOld = nhanKhaus.filter(nk => Number(nk.hoKhauId) === Number(editingItem.hoKhauId) && nk.trangThai !== "KHAI_TU").length;
+          // livingInOld bao gồm cả người đang chuyển. Nếu chỉ còn 1 người (chính là mình) -> Cảnh báo
+          if (livingInOld <= 1) {
+            setPendingPayload(submitData);
+            setShowConfirmDeleteHoKhau(true);
+            return;
           }
         }
-        
-        alert("Cập nhật nhân khẩu thành công!");
+
+        // Cập nhật nhân khẩu
+        await executeUpdate(submitData);
       } else {
         await createNhanKhau(submitData);
         alert("Tạo nhân khẩu thành công!");
@@ -401,6 +418,43 @@ function NhanKhauPage() {
       setSubmitError(errorMsg);
     }
   };
+
+  const executeUpdate = async (data) => {
+    await updateNhanKhau(editingItem.id, data);
+
+    // Nếu đây là chủ hộ và tên đã thay đổi, cập nhật tên chủ hộ trong hộ khẩu
+    if (editingItem.quanHeChuHo === "Chủ hộ" && editingItem.hoTen !== formData.hoTen) {
+      try {
+        const hoKhau = hoKhaus.find((hk) => hk.id === Number(formData.hoKhauId));
+        if (hoKhau) {
+          await updateHoKhau(hoKhau.id, {
+            ...hoKhau,
+            tenChuHo: formData.hoTen,
+          });
+        }
+      } catch (err) {
+        console.error("Không thể cập nhật tên chủ hộ:", err);
+      }
+    }
+    alert("Cập nhật nhân khẩu thành công!");
+  };
+
+  const handleConfirmTransfer = async () => {
+    if (!pendingPayload) return;
+    try {
+      await executeUpdate(pendingPayload);
+      setShowConfirmDeleteHoKhau(false);
+      setPendingPayload(null);
+      handleCloseModal();
+      loadNhanKhaus();
+      alert("Đã chuyển hộ khẩu. Hộ khẩu cũ đã bị xóa khỏi hệ thống.");
+    } catch (err) {
+      const errorMsg = err.response?.data?.message || "Có lỗi xảy ra!";
+      setSubmitError(errorMsg);
+      setShowConfirmDeleteHoKhau(false);
+    }
+  };
+
 
   const handleActionSubmit = async (e) => {
     e.preventDefault();
@@ -532,8 +586,8 @@ function NhanKhauPage() {
                   <td>
                     <span className={`status-badge status-${nk.trangThaiHienTai || "THUONG_TRU"}`}>
                       {nk.trangThaiHienTai === "TAM_TRU" ? "Tạm trú" :
-                       nk.trangThaiHienTai === "TAM_VANG" ? "Tạm vắng" :
-                       nk.trangThaiHienTai === "KHAI_TU" ? "Khai tử" : "Thường trú"}
+                        nk.trangThaiHienTai === "TAM_VANG" ? "Tạm vắng" :
+                          nk.trangThaiHienTai === "KHAI_TU" ? "Khai tử" : "Thường trú"}
                     </span>
                   </td>
                   <td>{getSoHoKhau(nk.hoKhauId)}</td>
@@ -641,28 +695,40 @@ function NhanKhauPage() {
                         {detailNhanKhau.trangThaiHienTai === "TAM_TRU"
                           ? "Tạm trú"
                           : detailNhanKhau.trangThaiHienTai === "TAM_VANG"
-                          ? "Tạm vắng"
-                          : detailNhanKhau.trangThaiHienTai === "KHAI_TU"
-                          ? "Khai tử"
-                          : "Thường trú"}
+                            ? "Tạm vắng"
+                            : detailNhanKhau.trangThaiHienTai === "KHAI_TU"
+                              ? "Khai tử"
+                              : "Thường trú"}
                       </span>
                     </span>
                   </div>
-                  <div className="nhankhau-field-card">
-                    <span className="nhankhau-field-label">Tạm vắng từ</span>
-                    <span className="nhankhau-field-value">{formatDate(detailNhanKhau.tamVangTu)}</span>
-                  </div>
-                  <div className="nhankhau-field-card">
-                    <span className="nhankhau-field-label">Tạm vắng đến</span>
-                    <span className="nhankhau-field-value">{formatDate(detailNhanKhau.tamVangDen)}</span>
-                  </div>
-                  <div className="nhankhau-field-card">
-                    <span className="nhankhau-field-label">Tạm trú từ</span>
-                    <span className="nhankhau-field-value">{formatDate(detailNhanKhau.tamTruTu)}</span>
-                  </div>
-                  <div className="nhankhau-field-card">
-                    <span className="nhankhau-field-label">Tạm trú đến</span>
-                    <span className="nhankhau-field-value">{formatDate(detailNhanKhau.tamTruDen)}</span>
+                  {detailNhanKhau.trangThaiHienTai === "TAM_VANG" && (
+                    <>
+                      <div className="nhankhau-field-card">
+                        <span className="nhankhau-field-label">Tạm vắng từ</span>
+                        <span className="nhankhau-field-value">{formatDate(detailNhanKhau.tamVangTu)}</span>
+                      </div>
+                      <div className="nhankhau-field-card">
+                        <span className="nhankhau-field-label">Tạm vắng đến</span>
+                        <span className="nhankhau-field-value">{formatDate(detailNhanKhau.tamVangDen)}</span>
+                      </div>
+                    </>
+                  )}
+                  {detailNhanKhau.trangThaiHienTai === "TAM_TRU" && (
+                    <>
+                      <div className="nhankhau-field-card">
+                        <span className="nhankhau-field-label">Tạm trú từ</span>
+                        <span className="nhankhau-field-value">{formatDate(detailNhanKhau.tamTruTu)}</span>
+                      </div>
+                      <div className="nhankhau-field-card">
+                        <span className="nhankhau-field-label">Tạm trú đến</span>
+                        <span className="nhankhau-field-value">{formatDate(detailNhanKhau.tamTruDen)}</span>
+                      </div>
+                    </>
+                  )}
+                  <div className="nhankhau-field-card nhankhau-field-full">
+                    <span className="nhankhau-field-label">Ghi chú</span>
+                    <span className="nhankhau-field-value">{detailNhanKhau.ghiChu || "-"}</span>
                   </div>
                 </div>
               </div>
@@ -684,46 +750,51 @@ function NhanKhauPage() {
                   <button className="btn-edit" onClick={handleEditFromDetail}>
                     Sửa
                   </button>
-                  {detailNhanKhau.trangThaiHienTai !== "TAM_TRU" ? (
-                    <button
-                      className="btn-tamtru"
-                      onClick={() => handleActionFromDetail("tamtru")}
-                    >
-                      Tạm trú
-                    </button>
-                  ) : (
-                    <button
-                      className="btn-cancel-tamtru"
-                      onClick={handleCancelTamTruFromDetail}
-                    >
-                      Hủy tạm trú
-                    </button>
-                  )}
 
-                  {detailNhanKhau.trangThaiHienTai !== "TAM_VANG" ? (
-                    <button
-                      className="btn-tamvang"
-                      onClick={() => handleActionFromDetail("tamvang")}
-                    >
-                      Tạm vắng
-                    </button>
-                  ) : (
-                    <button
-                      className="btn-cancel-tamvang"
-                      onClick={handleCancelTamVangFromDetail}
-                    >
-                      Hủy tạm vắng
-                    </button>
-                  )}
-
+                  {/* Buttons hidden if Deceased */}
                   {detailNhanKhau.trangThaiHienTai !== "KHAI_TU" && (
-                    <button
-                      className="btn-khaitu"
-                      onClick={() => handleActionFromDetail("khaitu")}
-                    >
-                      Khai tử
-                    </button>
+                    <>
+                      {detailNhanKhau.trangThaiHienTai !== "TAM_TRU" ? (
+                        <button
+                          className="btn-tamtru"
+                          onClick={() => handleActionFromDetail("tamtru")}
+                        >
+                          Tạm trú
+                        </button>
+                      ) : (
+                        <button
+                          className="btn-cancel-tamtru"
+                          onClick={handleCancelTamTruFromDetail}
+                        >
+                          Hủy tạm trú
+                        </button>
+                      )}
+
+                      {detailNhanKhau.trangThaiHienTai !== "TAM_VANG" ? (
+                        <button
+                          className="btn-tamvang"
+                          onClick={() => handleActionFromDetail("tamvang")}
+                        >
+                          Tạm vắng
+                        </button>
+                      ) : (
+                        <button
+                          className="btn-cancel-tamvang"
+                          onClick={handleCancelTamVangFromDetail}
+                        >
+                          Hủy tạm vắng
+                        </button>
+                      )}
+
+                      <button
+                        className="btn-khaitu"
+                        onClick={() => handleActionFromDetail("khaitu")}
+                      >
+                        Khai tử
+                      </button>
+                    </>
                   )}
+
                   <button className="btn-delete" onClick={handleDeleteFromDetail}>
                     Xóa
                   </button>
@@ -750,6 +821,14 @@ function NhanKhauPage() {
                   {submitError}
                 </div>
               )}
+
+              {isLocked && (
+                <div style={{ backgroundColor: "#fff3cd", color: "#856404", padding: "10px", marginBottom: "15px", borderRadius: "4px", border: "1px solid #ffeeba" }}>
+                  <strong>⚠ Nhân khẩu đã Khai tử/Đã mất.</strong><br />
+                  Thông tin bị khóa. Để chỉnh sửa, vui lòng đổi <strong>Trạng thái</strong> sang "Thường trú" (Hủy khai tử).
+                </div>
+              )}
+
               <div className="form-row">
                 <div className="form-group">
                   <label>Họ tên <span className="required">*</span></label>
@@ -758,6 +837,7 @@ function NhanKhauPage() {
                     value={formData.hoTen}
                     onChange={(e) => setFormData({ ...formData, hoTen: e.target.value })}
                     required
+                    disabled={isLocked}
                   />
                 </div>
                 <div className="form-group">
@@ -767,6 +847,7 @@ function NhanKhauPage() {
                     value={formData.ngaySinh}
                     onChange={(e) => setFormData({ ...formData, ngaySinh: e.target.value })}
                     required
+                    disabled={isLocked}
                   />
                 </div>
               </div>
@@ -790,7 +871,22 @@ function NhanKhauPage() {
                     value={formData.danToc}
                     onChange={(e) => setFormData({ ...formData, danToc: e.target.value })}
                     required
+                    disabled={isLocked}
                   />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Trạng thái</label>
+                  <select
+                    value={formData.trangThai}
+                    onChange={(e) => setFormData({ ...formData, trangThai: e.target.value })}
+                  >
+                    <option value="Thường trú">Thường trú</option>
+                    <option value="Tạm trú">Tạm trú</option>
+                    <option value="Tạm vắng">Tạm vắng</option>
+                    <option value="KHAI_TU">Đã mất (Khai tử)</option>
+                  </select>
                 </div>
               </div>
               <div className="form-row">
@@ -868,54 +964,84 @@ function NhanKhauPage() {
               </div>
               <div className="form-row">
                 <div className="form-group">
-                  <label>Quan hệ chủ hộ</label>
+                  <label>Quan hệ với chủ hộ <span className="required">*</span></label>
                   <select
                     value={formData.quanHeChuHo}
                     onChange={(e) => setFormData({ ...formData, quanHeChuHo: e.target.value })}
+                    required
                   >
-                    <option
-                      value="Chủ hộ"
-                      disabled={
-                        editingItem?.quanHeChuHo === "Chủ hộ"
-                          ? false
-                          : formData.hoKhauId && hoKhauHasChuHo.has(Number(formData.hoKhauId))
-                      }
-                    >
-                      Chủ hộ
-                    </option>
+                    {/* Nếu đang sửa Chủ hộ, vẫn cho phép chọn thành viên để kích hoạt tính năng chuyển quyền,
+                       Nhưng nếu hộ khẩu đã có chủ hộ (và không phải mình), thì không cho chọn Chủ hộ */}
+                    {!(hoKhauHasChuHo.has(Number(formData.hoKhauId)) && editingItem?.quanHeChuHo !== "Chủ hộ") && (
+                      <option value="Chủ hộ">Chủ hộ</option>
+                    )}
                     <option value="Vợ/Chồng">Vợ/Chồng</option>
                     <option value="Con">Con</option>
                     <option value="Bố/Mẹ">Bố/Mẹ</option>
+                    <option value="Ông/Bà">Ông/Bà</option>
+                    <option value="Cháu">Cháu</option>
+                    <option value="Anh/Chị/Em">Anh/Chị/Em</option>
+                    <option value="Thành viên">Thành viên</option>
                     <option value="Khác">Khác</option>
                   </select>
                 </div>
-                <div className="form-group">
-                  <label>Hộ khẩu <span className="required">*</span></label>
-                  <select
-                    value={formData.hoKhauId}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      const hasChuHo = value ? hoKhauHasChuHo.has(Number(value)) : false;
-                      setFormData((prev) => {
-                        const next = { ...prev, hoKhauId: value };
-                        if (hasChuHo && prev.quanHeChuHo === "Chủ hộ" && prev.quanHeChuHo !== (editingItem?.quanHeChuHo || "")) {
-                          next.quanHeChuHo = "Vợ/Chồng";
-                        }
-                        return next;
-                      });
-                    }}
-                    required
-                    disabled={!!editingItem}
-                  >
-                    <option value="">Chọn hộ khẩu</option>
-                    {hoKhaus.map((hk) => (
-                      <option key={hk.id} value={hk.id}>
-                        {hk.soHoKhau}
-                      </option>
-                    ))}
-                  </select>
-                </div>
               </div>
+
+              {/* SECTION: Chọn chủ hộ mới (Chỉ hiện khi đang là Chủ hộ và đổi sang vai trò khác, VÀ KHÔNG PHẢI LÀ CHUYỂN HỘ) */}
+              {editingItem?.quanHeChuHo === "Chủ hộ" && formData.quanHeChuHo !== "Chủ hộ" && Number(formData.hoKhauId) === Number(editingItem?.hoKhauId) && (
+                <div className="form-row" style={{ backgroundColor: "#fff3cd", padding: "10px", borderRadius: "5px", border: "1px solid #ffeeba" }}>
+                  <div className="form-group" style={{ width: "100%" }}>
+                    <label style={{ color: "#856404" }}>
+                      ⚠ Bạn đang hủy quyền Chủ hộ. Vui lòng chọn Chủ hộ mới: <span className="required">*</span>
+                    </label>
+                    <select
+                      value={formData.newChuHoId}
+                      onChange={(e) => setFormData({ ...formData, newChuHoId: e.target.value })}
+                      required
+                      className="form-control"
+                    >
+                      <option value="">-- Chọn thành viên kế nhiệm --</option>
+                      {otherMembers.map(mem => (
+                        <option key={mem.id} value={mem.id}>
+                          {mem.hoTen} (quan hệ: {mem.quanHeChuHo})
+                        </option>
+                      ))}
+                    </select>
+                    {otherMembers.length === 0 && (
+                      <div style={{ color: "red", fontSize: "0.9em", marginTop: "5px" }}>
+                        Không còn thành viên nào khác để chuyển quyền! Bạn không thể thực hiện thao tác này.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              <div className="form-group">
+                <label>Hộ khẩu <span className="required">*</span></label>
+                <select
+                  value={formData.hoKhauId}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    const hasChuHo = value ? hoKhauHasChuHo.has(Number(value)) : false;
+                    setFormData((prev) => {
+                      const next = { ...prev, hoKhauId: value };
+                      if (hasChuHo && prev.quanHeChuHo === "Chủ hộ" && prev.quanHeChuHo !== (editingItem?.quanHeChuHo || "")) {
+                        next.quanHeChuHo = "Vợ/Chồng";
+                      }
+                      return next;
+                    });
+                  }}
+                  required
+                  disabled={isLocked}
+                >
+                  <option value="">Chọn hộ khẩu</option>
+                  {hoKhaus.map((hk) => (
+                    <option key={hk.id} value={hk.id}>
+                      {hk.soHoKhau}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div className="form-group">
                 <label>Ghi chú</label>
                 <textarea
@@ -934,72 +1060,94 @@ function NhanKhauPage() {
               </div>
             </form>
           </div>
-        </div>
-      )}
+        </div >
+      )
+      }
 
       {/* Modal thao tác (Tạm trú, Tạm vắng, Khai tử) */}
-      {showActionModal && selectedNhanKhau && (
-        <div className="modal-overlay" onClick={handleCloseActionModal}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>
-                {actionType === "tamtru" && "Đăng Ký Tạm Trú"}
-                {actionType === "tamvang" && "Đăng Ký Tạm Vắng"}
-                {actionType === "khaitu" && "Khai Tử"}
-              </h2>
-              <button className="modal-close" onClick={handleCloseActionModal}>
-                ×
-              </button>
-            </div>
-            <form onSubmit={handleActionSubmit} className="modal-form">
-              <div className="form-group">
-                <label>Nhân khẩu</label>
-                <input
-                  type="text"
-                  value={selectedNhanKhau.hoTen || ""}
-                  disabled
-                  className="disabled-input"
-                />
+      {
+        showActionModal && selectedNhanKhau && (
+          <div className="modal-overlay" onClick={handleCloseActionModal}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>
+                  {actionType === "tamtru" && "Đăng Ký Tạm Trú"}
+                  {actionType === "tamvang" && "Đăng Ký Tạm Vắng"}
+                  {actionType === "khaitu" && "Khai Tử"}
+                </h2>
+                <button className="modal-close" onClick={handleCloseActionModal}>
+                  ×
+                </button>
               </div>
-              {actionType !== "khaitu" && (
-                <>
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label>
-                        Ngày bắt đầu <span className="required">*</span>
-                      </label>
-                      <input
-                        type="date"
-                        value={actionFormData.ngayBatDau}
-                        onChange={(e) =>
-                          setActionFormData({
-                            ...actionFormData,
-                            ngayBatDau: e.target.value,
-                          })
-                        }
-                        required
-                      />
+              <form onSubmit={handleActionSubmit} className="modal-form">
+                <div className="form-group">
+                  <label>Nhân khẩu</label>
+                  <input
+                    type="text"
+                    value={selectedNhanKhau.hoTen || ""}
+                    disabled
+                    className="disabled-input"
+                  />
+                </div>
+                {actionType !== "khaitu" && (
+                  <>
+                    <div className="form-row">
+                      <div className="form-group">
+                        <label>
+                          Ngày bắt đầu <span className="required">*</span>
+                        </label>
+                        <input
+                          type="date"
+                          value={actionFormData.ngayBatDau}
+                          onChange={(e) =>
+                            setActionFormData({
+                              ...actionFormData,
+                              ngayBatDau: e.target.value,
+                            })
+                          }
+                          required
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>
+                          Ngày kết thúc <span className="required">*</span>
+                        </label>
+                        <input
+                          type="date"
+                          value={actionFormData.ngayKetThuc}
+                          onChange={(e) =>
+                            setActionFormData({
+                              ...actionFormData,
+                              ngayKetThuc: e.target.value,
+                            })
+                          }
+                          required
+                        />
+                      </div>
                     </div>
                     <div className="form-group">
                       <label>
-                        Ngày kết thúc <span className="required">*</span>
+                        Lý do <span className="required">*</span>
                       </label>
-                      <input
-                        type="date"
-                        value={actionFormData.ngayKetThuc}
+                      <textarea
+                        value={actionFormData.lyDo}
                         onChange={(e) =>
                           setActionFormData({
                             ...actionFormData,
-                            ngayKetThuc: e.target.value,
+                            lyDo: e.target.value,
                           })
                         }
                         required
+                        rows="3"
+                        placeholder="Nhập lý do..."
                       />
                     </div>
-                  </div>
+                  </>
+                )}
+                {actionType === "khaitu" && (
                   <div className="form-group">
                     <label>
-                      Lý do <span className="required">*</span>
+                      Lý do khai tử <span className="required">*</span>
                     </label>
                     <textarea
                       value={actionFormData.lyDo}
@@ -1010,50 +1158,52 @@ function NhanKhauPage() {
                         })
                       }
                       required
-                      rows="3"
-                      placeholder="Nhập lý do..."
+                      rows="4"
+                      placeholder="Nhập lý do khai tử..."
                     />
                   </div>
-                </>
-              )}
-              {actionType === "khaitu" && (
-                <div className="form-group">
-                  <label>
-                    Lý do khai tử <span className="required">*</span>
-                  </label>
-                  <textarea
-                    value={actionFormData.lyDo}
-                    onChange={(e) =>
-                      setActionFormData({
-                        ...actionFormData,
-                        lyDo: e.target.value,
-                      })
-                    }
-                    required
-                    rows="4"
-                    placeholder="Nhập lý do khai tử..."
-                  />
+                )}
+                <div className="form-actions">
+                  <button
+                    type="button"
+                    className="btn-cancel"
+                    onClick={handleCloseActionModal}
+                  >
+                    Hủy
+                  </button>
+                  <button type="submit" className="btn-submit">
+                    {actionType === "tamtru" && "Đăng ký tạm trú"}
+                    {actionType === "tamvang" && "Đăng ký tạm vắng"}
+                    {actionType === "khaitu" && "Khai tử"}
+                  </button>
                 </div>
-              )}
-              <div className="form-actions">
-                <button
-                  type="button"
-                  className="btn-cancel"
-                  onClick={handleCloseActionModal}
-                >
-                  Hủy
-                </button>
-                <button type="submit" className="btn-submit">
-                  {actionType === "tamtru" && "Đăng ký tạm trú"}
-                  {actionType === "tamvang" && "Đăng ký tạm vắng"}
-                  {actionType === "khaitu" && "Khai tử"}
-                </button>
-              </div>
-            </form>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+      {/* Modal xác nhận xóa hộ khẩu khi chuyển đi */}
+      {
+        showConfirmDeleteHoKhau && (
+          <div className="modal-overlay">
+            <div className="modal-content" style={{ maxWidth: '400px' }}>
+              <div className="modal-header" style={{ borderBottom: 'none' }}>
+                <h3 style={{ color: '#dc3545' }}>⚠ Cảnh báo</h3>
+              </div>
+              <div className="modal-body">
+                <p>Bạn là thành viên duy nhất của hộ khẩu hiện tại.</p>
+                <p>Sau khi bạn chuyển đi, <strong>Hộ khẩu cũ sẽ bị xóa vĩnh viễn</strong>.</p>
+                <p>Bạn có chắc chắn muốn tiếp tục?</p>
+              </div>
+              <div className="form-actions">
+                <button className="btn-cancel" onClick={() => setShowConfirmDeleteHoKhau(false)}>Hủy</button>
+                <button className="btn-submit" style={{ backgroundColor: '#dc3545' }} onClick={handleConfirmTransfer}>Xác nhận chuyển</button>
+              </div>
+            </div>
+          </div>
+        )
+      }
+    </div >
   );
 }
 

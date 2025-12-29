@@ -18,6 +18,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@lombok.extern.slf4j.Slf4j
 public class DotThuPhiService {
 
     private final DotThuPhiRepository repo;
@@ -32,7 +33,7 @@ public class DotThuPhiService {
     // Lấy đợt thu phí theo id
     public DotThuPhiResponseDto getById(Long id) {
         DotThuPhi entity = repo.findById(id)
-            .orElseThrow(() -> new NotFoundException("Không tìm thấy đợt thu phí id = " + id));
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy đợt thu phí id = " + id));
         return toResponseDto(entity);
     }
 
@@ -43,7 +44,7 @@ public class DotThuPhiService {
         if (dto.getNgayKetThuc().isBefore(dto.getNgayBatDau())) {
             throw new BadRequestException("Ngày kết thúc phải sau hoặc bằng ngày bắt đầu");
         }
-        
+
         // Validate dinhMuc based on loai
         BigDecimal dinhMuc = dto.getDinhMuc();
         if (dto.getLoai() == LoaiThuPhi.BAT_BUOC) {
@@ -64,7 +65,9 @@ public class DotThuPhiService {
                 .loai(dto.getLoai())
                 .ngayBatDau(dto.getNgayBatDau())
                 .ngayKetThuc(dto.getNgayKetThuc())
-            .dinhMuc(dinhMuc)
+                .ngayKetThuc(dto.getNgayKetThuc())
+                .dinhMuc(dinhMuc)
+                .thuTheoDot(dto.getThuTheoDot())
                 .build();
 
         DotThuPhi saved = repo.save(entity);
@@ -87,7 +90,28 @@ public class DotThuPhiService {
                 .loai(entity.getLoai())
                 .ngayBatDau(entity.getNgayBatDau())
                 .ngayKetThuc(entity.getNgayKetThuc())
-            .dinhMuc(entity.getDinhMuc())
+                .ngayKetThuc(entity.getNgayKetThuc())
+                .dinhMuc(entity.getDinhMuc())
+                .thuTheoDot(entity.getThuTheoDot())
                 .build();
+    }
+
+    @jakarta.annotation.PostConstruct
+    public void initSanitationFee() {
+        int currentYear = java.time.LocalDate.now().getYear();
+        String feeName = "Khoản phí vệ sinh năm " + currentYear;
+
+        if (!repo.existsByTenDot(feeName)) {
+            log.info("Creating default sanitation fee for year {}", currentYear);
+            DotThuPhi fee = DotThuPhi.builder()
+                    .tenDot(feeName)
+                    .loai(LoaiThuPhi.BAT_BUOC)
+                    .ngayBatDau(java.time.LocalDate.of(currentYear, 1, 1))
+                    .ngayKetThuc(java.time.LocalDate.of(currentYear, 12, 31))
+                    .dinhMuc(new BigDecimal("72000"))
+                    .thuTheoDot(true)
+                    .build();
+            repo.save(fee);
+        }
     }
 }

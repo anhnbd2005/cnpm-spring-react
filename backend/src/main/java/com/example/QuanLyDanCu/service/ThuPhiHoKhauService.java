@@ -38,18 +38,23 @@ import java.util.stream.Collectors;
  * 
  * <h2>Quy tắc mới:</h2>
  * <ul>
- *   <li><b>Một bản ghi duy nhất</b> cho mỗi hộ khẩu + đợt thu phí</li>
- *   <li><b>Thanh toán toàn bộ</b> một lần (không hỗ trợ thanh toán từng phần)</li>
- *   <li><b>Tính tháng động</b> từ ngayBatDau/ngayKetThuc của đợt thu phí</li>
- *   <li><b>Công thức bắt buộc:</b> tongPhi = soNguoi × dinhMuc × sốTháng (bao gồm cả hai đầu mút)</li>
- *   <li><b>Phi tự nguyện:</b> tongPhi được lấy trực tiếp từ yêu cầu người dùng</li>
- *   <li><b>Lưu trữ:</b> bảng `thu_phi_ho_khau` chỉ lưu trạng thái `DA_NOP`; `CHUA_NOP` chỉ dùng khi hiển thị tổng quan</li>
+ * <li><b>Một bản ghi duy nhất</b> cho mỗi hộ khẩu + đợt thu phí</li>
+ * <li><b>Thanh toán toàn bộ</b> một lần (không hỗ trợ thanh toán từng
+ * phần)</li>
+ * <li><b>Tính tháng động</b> từ ngayBatDau/ngayKetThuc của đợt thu phí</li>
+ * <li><b>Công thức bắt buộc:</b> tongPhi = soNguoi × dinhMuc × sốTháng (bao gồm
+ * cả hai đầu mút)</li>
+ * <li><b>Phi tự nguyện:</b> tongPhi được lấy trực tiếp từ yêu cầu người
+ * dùng</li>
+ * <li><b>Lưu trữ:</b> bảng `thu_phi_ho_khau` chỉ lưu trạng thái `DA_NOP`;
+ * `CHUA_NOP` chỉ dùng khi hiển thị tổng quan</li>
  * </ul>
  * 
  * <h3>Trạng thái:</h3>
  * <ul>
- *   <li><b>BAT_BUOC:</b> DA_NOP (đã nộp đủ một lần), CHUA_NOP (ngầm hiểu khi chưa có bản ghi)</li>
- *   <li><b>TU_NGUYEN:</b> chỉ tạo bản ghi khi người dân đóng góp</li>
+ * <li><b>BAT_BUOC:</b> DA_NOP (đã nộp đủ một lần), CHUA_NOP (ngầm hiểu khi chưa
+ * có bản ghi)</li>
+ * <li><b>TU_NGUYEN:</b> chỉ tạo bản ghi khi người dân đóng góp</li>
  * </ul>
  * 
  * @author Refactored November 2025
@@ -74,11 +79,14 @@ public class ThuPhiHoKhauService {
      */
     public List<ThuPhiHoKhauResponseDto> getAll() {
         return repo.findAll().stream()
+                .filter(record -> record.getHoKhau() != null && !Boolean.TRUE.equals(record.getHoKhau().getIsDeleted()))
                 .sorted((t1, t2) -> {
                     String so1 = t1.getHoKhau().getSoHoKhau();
                     String so2 = t2.getHoKhau().getSoHoKhau();
-                    if (so1 == null) return 1;
-                    if (so2 == null) return -1;
+                    if (so1 == null)
+                        return 1;
+                    if (so2 == null)
+                        return -1;
                     return so1.compareTo(so2);
                 })
                 .map(this::toResponseDto)
@@ -108,7 +116,7 @@ public class ThuPhiHoKhauService {
      */
     public Map<String, Object> getOverviewByPeriod(Long dotThuPhiId) {
         DotThuPhi dotThuPhi = dotThuPhiRepo.findById(dotThuPhiId)
-            .orElseThrow(() -> new NotFoundException("Không tìm thấy đợt thu phí với ID = " + dotThuPhiId));
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy đợt thu phí với ID = " + dotThuPhiId));
 
         if (dotThuPhi.getLoai() == LoaiThuPhi.BAT_BUOC) {
             return buildMandatoryOverview(dotThuPhi);
@@ -128,13 +136,12 @@ public class ThuPhiHoKhauService {
                         record -> record.getHoKhau().getId(),
                         record -> record,
                         (left, right) -> left,
-                        LinkedHashMap::new
-                ));
+                        LinkedHashMap::new));
 
-        List<HoKhau> households = hoKhauRepo.findAllByOrderByIdAsc();
+        List<HoKhau> households = hoKhauRepo.findActiveHouseholds();
         households.sort(Comparator.comparing(
-            HoKhau::getSoHoKhau,
-            Comparator.nullsLast(String::compareTo)));
+                HoKhau::getSoHoKhau,
+                Comparator.nullsLast(String::compareTo)));
         List<ThuPhiHoKhauResponseDto> rows = new ArrayList<>();
 
         int totalHouseholds = households.size();
@@ -157,7 +164,8 @@ public class ThuPhiHoKhauService {
             }
 
             int soNguoi = countEligibleMembers(hoKhau.getId(), refDate);
-            BigDecimal expected = calculateMandatoryAmount(soNguoi, dotThuPhi.getDinhMuc(), soThang);
+            BigDecimal expected = calculateMandatoryAmount(soNguoi, dotThuPhi.getDinhMuc(), soThang,
+                    dotThuPhi.getThuTheoDot());
             tongDuKien = tongDuKien.add(expected);
 
             ThuPhiHoKhauResponseDto dto = ThuPhiHoKhauResponseDto.builder()
@@ -198,12 +206,12 @@ public class ThuPhiHoKhauService {
 
     private Map<String, Object> buildVoluntaryOverview(DotThuPhi dotThuPhi) {
         List<ThuPhiHoKhauResponseDto> households = repo.findByDotThuPhiId(dotThuPhi.getId()).stream()
-            .sorted(Comparator.comparing(
-                (ThuPhiHoKhau record) -> {
-                    HoKhau hoKhau = record.getHoKhau();
-                    return hoKhau == null ? null : hoKhau.getSoHoKhau();
-                },
-                Comparator.nullsLast(String::compareTo)))
+                .sorted(Comparator.comparing(
+                        (ThuPhiHoKhau record) -> {
+                            HoKhau hoKhau = record.getHoKhau();
+                            return hoKhau == null ? null : hoKhau.getSoHoKhau();
+                        },
+                        Comparator.nullsLast(String::compareTo)))
                 .map(this::toResponseDto)
                 .collect(Collectors.toList());
 
@@ -227,10 +235,10 @@ public class ThuPhiHoKhauService {
      */
     public Map<String, Object> calculateFee(Long hoKhauId, Long dotThuPhiId) {
         HoKhau hoKhau = hoKhauRepo.findById(hoKhauId)
-            .orElseThrow(() -> new NotFoundException("Không tìm thấy hộ khẩu với ID = " + hoKhauId));
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy hộ khẩu với ID = " + hoKhauId));
 
         DotThuPhi dotThuPhi = dotThuPhiRepo.findById(dotThuPhiId)
-            .orElseThrow(() -> new NotFoundException("Không tìm thấy đợt thu phí với ID = " + dotThuPhiId));
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy đợt thu phí với ID = " + dotThuPhiId));
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("hoKhauId", hoKhauId);
@@ -241,7 +249,8 @@ public class ThuPhiHoKhauService {
         result.put("loaiThuPhi", dotThuPhi.getLoai());
 
         if (dotThuPhi.getLoai() == LoaiThuPhi.TU_NGUYEN) {
-            result.put("message", "Đợt thu tự nguyện không có định mức cố định. Người dân tự quyết định số tiền đóng góp.");
+            result.put("message",
+                    "Đợt thu tự nguyện không có định mức cố định. Người dân tự quyết định số tiền đóng góp.");
             result.put("suggestedAmount", dotThuPhi.getDinhMuc());
             return result;
         }
@@ -253,16 +262,21 @@ public class ThuPhiHoKhauService {
         int memberCount = countEligibleMembers(hoKhauId, refDate);
         BigDecimal dinhMuc = dotThuPhi.getDinhMuc();
         long soThang = calculateMonths(dotThuPhi.getNgayBatDau(), dotThuPhi.getNgayKetThuc());
-        BigDecimal totalFee = calculateMandatoryAmount(memberCount, dinhMuc, soThang);
+        BigDecimal totalFee = calculateMandatoryAmount(memberCount, dinhMuc, soThang, dotThuPhi.getThuTheoDot());
 
         result.put("memberCount", memberCount);
         result.put("soThang", soThang);
         result.put("dinhMuc", dinhMuc);
         result.put("totalFee", totalFee);
-        result.put("formula", String.format("%s × %d × %d = %s VND", dinhMuc, memberCount, soThang, totalFee));
+
+        if (Boolean.TRUE.equals(dotThuPhi.getThuTheoDot())) {
+            result.put("formula", String.format("%s × %d = %s VND (Thu theo đợt)", dinhMuc, memberCount, totalFee));
+        } else {
+            result.put("formula", String.format("%s × %d × %d = %s VND", dinhMuc, memberCount, soThang, totalFee));
+        }
 
         return result;
-        }
+    }
 
     /**
      * Tạo bản ghi thu phí mới (ghi nhận thanh toán)
@@ -270,46 +284,48 @@ public class ThuPhiHoKhauService {
      * QUY TẮC:
      * - Chỉ cho phép một bản ghi duy nhất cho mỗi hộ khẩu + đợt thu phí
      * - Thanh toán luôn là toàn bộ số tiền (không hỗ trợ thanh toán từng phần)
-    * - BAT_BUOC: trạng thái = DA_NOP (do ghi nhận thanh toán đầy đủ)
-    * - TU_NGUYEN: ghi nhận số tiền người dân đóng góp
+     * - BAT_BUOC: trạng thái = DA_NOP (do ghi nhận thanh toán đầy đủ)
+     * - TU_NGUYEN: ghi nhận số tiền người dân đóng góp
      */
     @Transactional
     public ThuPhiHoKhauResponseDto create(ThuPhiHoKhauRequestDto dto, Authentication auth) {
-        
+
         // Validate household exists
         HoKhau hoKhau = hoKhauRepo.findById(dto.getHoKhauId())
-            .orElseThrow(() -> new NotFoundException("Không tìm thấy hộ khẩu với ID = " + dto.getHoKhauId()));
-        
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy hộ khẩu với ID = " + dto.getHoKhauId()));
+
         // Validate fee period exists
         DotThuPhi dotThuPhi = dotThuPhiRepo.findById(dto.getDotThuPhiId())
-            .orElseThrow(() -> new NotFoundException("Không tìm thấy đợt thu phí với ID = " + dto.getDotThuPhiId()));
+                .orElseThrow(
+                        () -> new NotFoundException("Không tìm thấy đợt thu phí với ID = " + dto.getDotThuPhiId()));
 
         if (dotThuPhi.getLoai() == LoaiThuPhi.BAT_BUOC && dto.getTongPhi() != null) {
             throw new BadRequestException("Không được gửi trường 'tongPhi' cho đợt thu bắt buộc!");
         }
-        
-        // CRITICAL: Check if a record already exists (enforce one record per household + period)
+
+        // CRITICAL: Check if a record already exists (enforce one record per household
+        // + period)
         List<ThuPhiHoKhau> existingRecords = repo.findByHoKhauIdAndDotThuPhiId(
                 dto.getHoKhauId(), dto.getDotThuPhiId());
-        
+
         if (!existingRecords.isEmpty()) {
             throw new BadRequestException(String.format(
                     "Đã tồn tại bản ghi thu phí cho hộ khẩu '%s' trong đợt '%s'. " +
-                    "Mỗi hộ khẩu chỉ được có một bản ghi cho mỗi đợt thu phí.",
+                            "Mỗi hộ khẩu chỉ được có một bản ghi cho mỗi đợt thu phí.",
                     hoKhau.getSoHoKhau(), dotThuPhi.getTenDot()));
         }
-        
+
         // Validate payment date falls within a period
         validatePaymentDate(dto.getNgayThu(), dotThuPhi);
-        
+
         // Get current user
         TaiKhoan currentUser = getCurrentUser(auth);
-        
+
         // Calculate fee components
         int soNguoi;
         long soThang = dotThuPhi.getLoai() == LoaiThuPhi.BAT_BUOC
-            ? calculateMonths(dotThuPhi.getNgayBatDau(), dotThuPhi.getNgayKetThuc())
-            : 0L;
+                ? calculateMonths(dotThuPhi.getNgayBatDau(), dotThuPhi.getNgayKetThuc())
+                : 0L;
         BigDecimal tongPhi;
         TrangThaiThuPhi trangThai = TrangThaiThuPhi.DA_NOP;
 
@@ -321,9 +337,10 @@ public class ThuPhiHoKhauService {
             LocalDate end = dotThuPhi.getNgayKetThuc();
             LocalDate refDate = end != null && ngayThu.isAfter(end) ? end : ngayThu;
             soNguoi = countEligibleMembers(dto.getHoKhauId(), refDate);
-            tongPhi = calculateMandatoryAmount(soNguoi, dotThuPhi.getDinhMuc(), soThang);
+            soNguoi = countEligibleMembers(dto.getHoKhauId(), refDate);
+            tongPhi = calculateMandatoryAmount(soNguoi, dotThuPhi.getDinhMuc(), soThang, dotThuPhi.getThuTheoDot());
         }
-        
+
         // Create entity
         ThuPhiHoKhau entity = ThuPhiHoKhau.builder()
                 .hoKhau(hoKhau)
@@ -334,12 +351,12 @@ public class ThuPhiHoKhauService {
                 .ngayThu(dto.getNgayThu())
                 .ghiChu(dto.getGhiChu())
                 .build();
-        
+
         ThuPhiHoKhau saved = repo.save(entity);
-        
-        log.info("Created fee record id={} hoKhau={} dotThuPhi={}", 
-             saved.getId(), hoKhau.getId(), dotThuPhi.getId());
-        
+
+        log.info("Created fee record id={} hoKhau={} dotThuPhi={}",
+                saved.getId(), hoKhau.getId(), dotThuPhi.getId());
+
         return toResponseDto(saved);
     }
 
@@ -351,9 +368,9 @@ public class ThuPhiHoKhauService {
         if (!repo.existsById(id)) {
             throw new NotFoundException("Không tìm thấy bản ghi thu phí với ID = " + id);
         }
-        
+
         repo.deleteById(id);
-        
+
         log.info("Deleted fee record id={}", id);
     }
 
@@ -395,8 +412,10 @@ public class ThuPhiHoKhauService {
                 continue;
             }
 
-            long soThang = calculateMonths(record.getDotThuPhi().getNgayBatDau(), record.getDotThuPhi().getNgayKetThuc());
-            BigDecimal expected = calculateMandatoryAmount(activeMembers, record.getDotThuPhi().getDinhMuc(), soThang);
+            long soThang = calculateMonths(record.getDotThuPhi().getNgayBatDau(),
+                    record.getDotThuPhi().getNgayKetThuc());
+            BigDecimal expected = calculateMandatoryAmount(activeMembers, record.getDotThuPhi().getDinhMuc(), soThang,
+                    record.getDotThuPhi().getThuTheoDot());
             if (!expected.equals(record.getTongPhi()) || !Integer.valueOf(activeMembers).equals(record.getSoNguoi())) {
                 record.setSoNguoi(activeMembers);
                 record.setTongPhi(expected);
@@ -409,37 +428,36 @@ public class ThuPhiHoKhauService {
         }
     }
 
-
     /**
      * Thống kê thu phí
      */
     public Map<String, Object> getStats() {
         List<ThuPhiHoKhau> all = repo.findAll();
-        
+
         long totalRecords = all.size();
-        
+
         BigDecimal totalExpectedFee = all.stream()
                 .map(t -> t.getTongPhi() != null ? t.getTongPhi() : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        
+
         long paidCount = all.stream()
                 .filter(t -> t.getTrangThai() == TrangThaiThuPhi.DA_NOP)
                 .count();
-        
+
         long unpaidCount = 0L; // CHUA_NOP không còn được lưu trong cơ sở dữ liệu
-        
+
         long totalHouseholds = all.stream()
                 .map(t -> t.getHoKhau().getId())
                 .distinct()
                 .count();
-        
+
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("totalRecords", totalRecords);
         stats.put("totalExpectedFee", totalExpectedFee);
         stats.put("totalHouseholds", totalHouseholds);
         stats.put("paidRecords", paidCount);
         stats.put("unpaidRecords", unpaidCount);
-        
+
         return stats;
     }
 
@@ -483,8 +501,19 @@ public class ThuPhiHoKhauService {
         return (int) count;
     }
 
-    private BigDecimal calculateMandatoryAmount(int numberOfPeople, BigDecimal dinhMuc, long soThang) {
-        if (dinhMuc == null || numberOfPeople <= 0 || soThang <= 0) {
+    private BigDecimal calculateMandatoryAmount(int numberOfPeople, BigDecimal dinhMuc, long soThang,
+            Boolean thuTheoDot) {
+        if (dinhMuc == null || numberOfPeople <= 0) {
+            return BigDecimal.ZERO;
+        }
+
+        // Nếu thu theo đợt -> Tính theo số người * định mức (không nhân tháng)
+        if (Boolean.TRUE.equals(thuTheoDot)) {
+            return dinhMuc.multiply(BigDecimal.valueOf(numberOfPeople));
+        }
+
+        // Mặc định: Thu theo tháng -> nhân thêm số tháng
+        if (soThang <= 0) {
             return BigDecimal.ZERO;
         }
         return dinhMuc
@@ -530,13 +559,13 @@ public class ThuPhiHoKhauService {
 
         LocalDate ngayBatDau = dotThuPhi.getNgayBatDau();
         LocalDate ngayKetThuc = dotThuPhi.getNgayKetThuc();
-        
+
         if (ngayBatDau != null && ngayThu.isBefore(ngayBatDau)) {
             throw new BadRequestException(String.format(
                     "Đợt thu phí '%s' chưa bắt đầu. Ngày thu phải từ %s trở đi.",
                     dotThuPhi.getTenDot(), ngayBatDau));
         }
-        
+
         if (ngayKetThuc != null && ngayThu.isAfter(ngayKetThuc)) {
             throw new BadRequestException(String.format(
                     "Đợt thu phí '%s' đã kết thúc vào %s. Không thể ghi nhận thanh toán sau ngày này.",
@@ -557,8 +586,8 @@ public class ThuPhiHoKhauService {
      */
     private ThuPhiHoKhauResponseDto toResponseDto(ThuPhiHoKhau entity) {
         long soThang = calculateMonths(
-            entity.getDotThuPhi().getNgayBatDau(),
-            entity.getDotThuPhi().getNgayKetThuc());
+                entity.getDotThuPhi().getNgayBatDau(),
+                entity.getDotThuPhi().getNgayKetThuc());
 
         return ThuPhiHoKhauResponseDto.builder()
                 .id(entity.getId())
@@ -567,10 +596,10 @@ public class ThuPhiHoKhauService {
                 .tenChuHo(entity.getHoKhau().getTenChuHo())
                 .dotThuPhiId(entity.getDotThuPhi().getId())
                 .tenDot(entity.getDotThuPhi().getTenDot())
-            .loaiThuPhi(entity.getDotThuPhi().getLoai())
+                .loaiThuPhi(entity.getDotThuPhi().getLoai())
                 .soNguoi(entity.getSoNguoi())
-            .soThang(soThang)
-            .tongPhi(entity.getTongPhi())
+                .soThang(soThang)
+                .tongPhi(entity.getTongPhi())
                 .trangThai(entity.getTrangThai())
                 .ngayThu(entity.getNgayThu())
                 .ghiChu(entity.getGhiChu())

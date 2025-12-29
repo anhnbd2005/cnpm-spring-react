@@ -35,7 +35,7 @@ public class NhanKhauController {
     @PreAuthorize("hasAnyAuthority('ADMIN','TOTRUONG','KETOAN')")
     @Operation(summary = "Lấy danh sách tất cả nhân khẩu", description = "Trả về danh sách đầy đủ thông tin nhân khẩu")
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "Lấy danh sách thành công")
+            @ApiResponse(responseCode = "200", description = "Lấy danh sách thành công")
     })
     public ResponseEntity<List<NhanKhauResponseDto>> getAll() {
         return ResponseEntity.ok(nhanKhauService.getAll());
@@ -45,12 +45,11 @@ public class NhanKhauController {
     @PreAuthorize("hasAnyAuthority('ADMIN','TOTRUONG','KETOAN')")
     @Operation(summary = "Lấy thông tin nhân khẩu theo ID", description = "Trả về thông tin chi tiết của một nhân khẩu")
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "Lấy thông tin thành công"),
-        @ApiResponse(responseCode = "400", description = "Không tìm thấy nhân khẩu với ID đã cho")
+            @ApiResponse(responseCode = "200", description = "Lấy thông tin thành công"),
+            @ApiResponse(responseCode = "400", description = "Không tìm thấy nhân khẩu với ID đã cho")
     })
     public ResponseEntity<NhanKhauResponseDto> getById(
-            @Parameter(description = "ID của nhân khẩu", example = "1")
-            @PathVariable Long id) {
+            @Parameter(description = "ID của nhân khẩu", example = "1") @PathVariable Long id) {
         return ResponseEntity.ok(nhanKhauService.getById(id));
     }
 
@@ -58,9 +57,9 @@ public class NhanKhauController {
     @PreAuthorize("hasAnyAuthority('ADMIN','TOTRUONG')")
     @Operation(summary = "Tạo mới nhân khẩu", description = "Thêm một nhân khẩu mới vào hệ thống")
     @ApiResponses({
-        @ApiResponse(responseCode = "201", description = "Tạo nhân khẩu thành công"),
-        @ApiResponse(responseCode = "400", description = "Dữ liệu không hợp lệ"),
-        @ApiResponse(responseCode = "403", description = "Không có quyền thực hiện thao tác")
+            @ApiResponse(responseCode = "201", description = "Tạo nhân khẩu thành công"),
+            @ApiResponse(responseCode = "400", description = "Dữ liệu không hợp lệ"),
+            @ApiResponse(responseCode = "403", description = "Không có quyền thực hiện thao tác")
     })
     public ResponseEntity<NhanKhauResponseDto> create(
             @Valid @RequestBody NhanKhauRequestDto dto,
@@ -73,13 +72,12 @@ public class NhanKhauController {
     @PreAuthorize("hasAnyAuthority('ADMIN','TOTRUONG')")
     @Operation(summary = "Cập nhật thông tin nhân khẩu (partial update)", description = "Cập nhật thông tin của nhân khẩu theo ID - chỉ cập nhật các trường được cung cấp")
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "Cập nhật thành công"),
-        @ApiResponse(responseCode = "400", description = "Dữ liệu không hợp lệ hoặc không tìm thấy nhân khẩu"),
-        @ApiResponse(responseCode = "403", description = "Không có quyền thực hiện thao tác")
+            @ApiResponse(responseCode = "200", description = "Cập nhật thành công"),
+            @ApiResponse(responseCode = "400", description = "Dữ liệu không hợp lệ hoặc không tìm thấy nhân khẩu"),
+            @ApiResponse(responseCode = "403", description = "Không có quyền thực hiện thao tác")
     })
     public ResponseEntity<NhanKhauResponseDto> update(
-            @Parameter(description = "ID của nhân khẩu", example = "1")
-            @PathVariable Long id,
+            @Parameter(description = "ID của nhân khẩu", example = "1") @PathVariable Long id,
             @RequestBody NhanKhauUpdateDto dto,
             Authentication auth) {
         return ResponseEntity.ok(nhanKhauService.update(id, dto, auth));
@@ -89,13 +87,12 @@ public class NhanKhauController {
     @PreAuthorize("hasAnyAuthority('ADMIN','TOTRUONG')")
     @Operation(summary = "Xóa nhân khẩu", description = "Xóa nhân khẩu khỏi hệ thống")
     @ApiResponses({
-        @ApiResponse(responseCode = "204", description = "Xóa thành công"),
-        @ApiResponse(responseCode = "400", description = "Không tìm thấy nhân khẩu"),
-        @ApiResponse(responseCode = "403", description = "Không có quyền thực hiện thao tác")
+            @ApiResponse(responseCode = "204", description = "Xóa thành công"),
+            @ApiResponse(responseCode = "400", description = "Không tìm thấy nhân khẩu"),
+            @ApiResponse(responseCode = "403", description = "Không có quyền thực hiện thao tác")
     })
     public ResponseEntity<Void> delete(
-            @Parameter(description = "ID của nhân khẩu", example = "1")
-            @PathVariable Long id,
+            @Parameter(description = "ID của nhân khẩu", example = "1") @PathVariable Long id,
             Authentication auth) {
         nhanKhauService.delete(id, auth);
         return ResponseEntity.noContent().build();
@@ -111,8 +108,7 @@ public class NhanKhauController {
             @ApiResponse(responseCode = "403", description = "Không có quyền thực hiện thao tác")
     })
     public ResponseEntity<NhanKhauResponseDto> dangKyTamTru(
-            @Parameter(description = "ID của nhân khẩu", example = "1")
-            @PathVariable Long id,
+            @Parameter(description = "ID của nhân khẩu", example = "1") @PathVariable Long id,
             @Valid @RequestBody DangKyTamTruTamVangRequestDto dto,
             Authentication auth) {
         return ResponseEntity.ok(nhanKhauService.dangKyTamTru(id, dto, auth));
@@ -127,11 +123,10 @@ public class NhanKhauController {
             @ApiResponse(responseCode = "403", description = "Không có quyền thực hiện thao tác")
     })
     public ResponseEntity<Void> huyTamTru(
-            @Parameter(description = "ID của nhân khẩu", example = "1")
-            @PathVariable Long id,
+            @Parameter(description = "ID của nhân khẩu", example = "1") @PathVariable Long id,
             Authentication auth) {
-         nhanKhauService.huyTamTru(id, auth);
-         return ResponseEntity.noContent().build();
+        nhanKhauService.huyTamTru(id, auth);
+        return ResponseEntity.noContent().build();
     }
 
     // --- TẠM VẮNG ---
@@ -144,8 +139,7 @@ public class NhanKhauController {
             @ApiResponse(responseCode = "403", description = "Không có quyền thực hiện thao tác")
     })
     public ResponseEntity<NhanKhauResponseDto> dangKyTamVang(
-            @Parameter(description = "ID của nhân khẩu", example = "1")
-            @PathVariable Long id,
+            @Parameter(description = "ID của nhân khẩu", example = "1") @PathVariable Long id,
             @Valid @RequestBody DangKyTamTruTamVangRequestDto dto,
             Authentication auth) {
 
@@ -174,14 +168,12 @@ public class NhanKhauController {
             @ApiResponse(responseCode = "400", description = "Lý do khai tử không hợp lệ hoặc nhân khẩu không tồn tại")
     })
     public ResponseEntity<NhanKhauResponseDto> khaiTu(
-            @Parameter(description = "ID nhân khẩu", example = "1")
-            @PathVariable Long id,
+            @Parameter(description = "ID nhân khẩu", example = "1") @PathVariable Long id,
             @Valid @RequestBody KhaiTuRequestDto request,
             Authentication auth) {
 
         return ResponseEntity.ok(
-                nhanKhauService.khaiTu(id, request.getLyDo(), auth)
-        );
+                nhanKhauService.khaiTu(id, request.getLyDo(), auth));
     }
 
     // Search theo tên
@@ -192,16 +184,16 @@ public class NhanKhauController {
             @ApiResponse(responseCode = "200", description = "Tìm kiếm thành công")
     })
     public ResponseEntity<List<NhanKhauResponseDto>> searchByName(
-            @Parameter(description = "Từ khóa tìm kiếm", example = "Nguyen")
-            @RequestParam("q") String q) {
+            @Parameter(description = "Từ khóa tìm kiếm", example = "Nguyen") @RequestParam("q") String q) {
         return ResponseEntity.ok(nhanKhauService.searchDtoByName(q));
     }
+
     // Thống kê giới tính
     @GetMapping("/stats/gender")
     @PreAuthorize("hasAnyAuthority('ADMIN','TOTRUONG','KETOAN')")
     @Operation(summary = "Thống kê theo giới tính", description = "Thống kê số lượng nhân khẩu theo giới tính")
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "Thống kê thành công")
+            @ApiResponse(responseCode = "200", description = "Thống kê thành công")
     })
     public ResponseEntity<Map<String, Object>> statsGender() {
         return ResponseEntity.ok(nhanKhauService.statsGender());
@@ -210,10 +202,7 @@ public class NhanKhauController {
     // Thống kê theo tuổi (thiếu nhi/đi làm/về hưu)
     @GetMapping("/stats/age")
     @PreAuthorize("hasAnyAuthority('ADMIN','TOTRUONG','KETOAN')")
-    @Operation(
-            summary = "Thống kê theo độ tuổi",
-            description = "Thống kê nhân khẩu theo 3 nhóm: Đi học (≤16 tuổi), Đi làm (17–59 tuổi), Về hưu (≥60 tuổi)"
-    )
+    @Operation(summary = "Thống kê theo độ tuổi", description = "Thống kê nhân khẩu theo 3 nhóm: Đi học (≤16 tuổi), Đi làm (17–59 tuổi), Về hưu (≥60 tuổi)")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Thống kê thành công")
     })
@@ -221,5 +210,12 @@ public class NhanKhauController {
         return ResponseEntity.ok(nhanKhauService.statsByAge());
     }
 
+    // Thống kê theo trạng thái
+    @GetMapping("/stats/status")
+    @PreAuthorize("hasAnyAuthority('ADMIN','TOTRUONG','KETOAN')")
+    @Operation(summary = "Thống kê theo trạng thái cư trú", description = "Thường trú, Tạm trú, Tạm vắng")
+    public ResponseEntity<Map<String, Object>> statsByStatus() {
+        return ResponseEntity.ok(nhanKhauService.statsByStatus());
+    }
 
 }

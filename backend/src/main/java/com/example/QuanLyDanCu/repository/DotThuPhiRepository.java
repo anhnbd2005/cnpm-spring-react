@@ -6,4 +6,5 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface DotThuPhiRepository extends JpaRepository<DotThuPhi, Long> {
+    boolean existsByTenDot(String tenDot);
 }

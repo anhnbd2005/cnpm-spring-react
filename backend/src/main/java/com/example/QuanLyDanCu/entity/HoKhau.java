@@ -7,7 +7,11 @@ import java.util.List;
 
 @Entity
 @Table(name = "ho_khau")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class HoKhau {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -19,6 +23,10 @@ public class HoKhau {
     private String tenChuHo;
     private String diaChi;
     private LocalDate ngayTao;
+
+    @Builder.Default
+    @Column(name = "is_deleted")
+    private Boolean isDeleted = false;
 
     @OneToMany(mappedBy = "hoKhauId")
     private List<NhanKhau> nhanKhauList;

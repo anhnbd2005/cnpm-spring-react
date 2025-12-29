@@ -145,3 +145,13 @@ export const getAgeStats = async () => {
   const response = await apiClient.get("/nhan-khau/stats/age");
   return response.data;
 };
+
+/**
+ * Thống kê nhân khẩu theo trạng thái
+ * GET /api/nhan-khau/stats/status
+ * @returns {Promise<{total: number, byStatus: {THUONG_TRU: number, TAM_TRU: number, TAM_VANG: number}, labels: Object}>}
+ */
+export const getStatusStats = async () => {
+  const response = await apiClient.get("/nhan-khau/stats/status");
+  return response.data;
+};

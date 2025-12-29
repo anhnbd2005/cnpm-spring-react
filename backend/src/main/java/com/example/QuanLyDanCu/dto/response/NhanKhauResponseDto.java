@@ -69,6 +69,10 @@ public class NhanKhauResponseDto {
     @Schema(description = "ID hộ khẩu", example = "1")
     private Long hoKhauId;
 
-    @Schema(description = "Trạng thái hiện tại (computed)", example = "THUONG_TRU", allowableValues = {"THUONG_TRU", "TAM_VANG", "TAM_TRU"})
+    @Schema(description = "Trạng thái hiện tại (computed)", example = "THUONG_TRU", allowableValues = { "THUONG_TRU",
+            "TAM_VANG", "TAM_TRU" })
     private String trangThaiHienTai;
+
+    @Schema(description = "Trạng thái (KHAI_TU, etc.)", example = "KHAI_TU")
+    private String trangThai;
 }
